@@ -1,9 +1,10 @@
 package org.jetlinks.marketplace.client;
 
-import org.jetlinks.marketplace.InstalledCapability;
+import org.jetlinks.marketplace.InstalledResource;
 import org.jetlinks.marketplace.ProgressState;
 import reactor.core.publisher.Flux;
 
+import java.util.Collection;
 import java.util.Map;
 
 /**
@@ -14,12 +15,15 @@ import java.util.Map;
  */
 public interface CapabilityResourceManager {
 
-    Flux<ProgressState<InstalledCapability>> install(String capabilityId,
-                                                     String version,
-                                                     Map<String, Object> configuration);
+    Flux<ProgressState<InstalledResource>> install(String capabilityId,
+                                                   String version,
+                                                   Map<String, Object> configuration);
 
-    Flux<ProgressState<InstalledCapability>> upgrade(String capabilityId,
+    Flux<ProgressState<InstalledResource>> upgrade(String capabilityId,
                                                      String targetVersion,
                                                      Map<String, Object> configuration);
+
+    Flux<InstalledResource> listInstalledResources(String type, Collection<String> dataId);
+
 
 }

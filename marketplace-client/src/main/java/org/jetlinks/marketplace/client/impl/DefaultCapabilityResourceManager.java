@@ -4,6 +4,7 @@ import com.google.common.collect.Collections2;
 import lombok.AllArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveRepository;
+import org.hswebframework.web.exception.NotFoundException;
 import org.jetlinks.core.monitor.Monitor;
 import org.jetlinks.core.monitor.logger.Logger;
 import org.jetlinks.core.monitor.metrics.Metrics;
@@ -21,6 +22,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
@@ -33,58 +35,62 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
 
     @Override
     @Transactional(rollbackFor = Throwable.class)
-    public Flux<ProgressState<InstalledCapability>> install(String capabilityId,
-                                                            String version,
-                                                            Map<String, Object> configuration) {
+    public Flux<ProgressState<InstalledResource>> install(String capabilityId,
+                                                          String version,
+                                                          Map<String, Object> configuration) {
 
-        Sinks.ManyWithUpstream<ProgressState<InstalledCapability>>
+        Sinks.ManyWithUpstream<ProgressState<InstalledResource>>
             progressStream = Sinks
             .unsafe()
             .manyWithUpstream()
             .multicastOnBackpressureBuffer();
 
-        // downloading
-        progressStream.emitNext(
-            ProgressState.progress("message.capability_download_package", 0.2F),
-            Reactors.emitFailureHandler());
-
         progressStream.subscribeTo(
             client
                 .download(capabilityId, version)
+                .switchIfEmpty(Mono.error(() -> new NotFoundException.NoStackTrace("message.capability.not_found", capabilityId)))
                 .flatMap(pkg -> {
                     // saving...
                     progressStream.emitNext(
-                        ProgressState.progress("message.capability_download_package", 0.5F),
+                        ProgressState.progress("message.capability_download_package"),
                         Reactors.emitFailureHandler());
-                    return savePackage(pkg, progressStream);
+                    return savePackage(pkg, progressStream, configuration);
                 })
-                .map(ProgressState::success)
+                .then(Mono.<ProgressState<InstalledResource>>empty())
                 .onErrorResume(err -> Mono.just(ProgressState.error(err)))
+                .doFinally(ignore -> progressStream.emitComplete(Reactors.emitFailureHandler()))
         );
 
 
-        return progressStream.asFlux();
+        return progressStream
+            .asFlux()
+            .doOnSubscribe((s) -> progressStream.emitNext(
+                ProgressState.progress("message.capability_download_package"),
+                Reactors.emitFailureHandler()));
     }
 
 
     @Transactional(rollbackFor = Throwable.class)
-    public Mono<InstalledCapability> savePackage(CapabilityPackage pkg,
-                                                 Sinks.ManyWithUpstream<ProgressState<InstalledCapability>> upstream) {
+    public Mono<Void> savePackage(CapabilityPackage pkg,
+                                  Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
+                                  Map<String, Object> configuration) {
         // todo 安装依赖.
         List<CapabilityDependency> dependencies = pkg.getInfo().getDependencies();
 
         CapabilityProvider provider = CapabilityProviders.getOrThrow(pkg.getInfo().getProvider());
 
         return provider
-            .install(new CapabilityContextImpl(this, pkg, upstream))
-            .flatMap(cap -> {
-
+            .install(new CapabilityContextImpl(this, pkg, configuration, upstream))
+            .doOnNext(resource -> upstream
+                .emitNext(
+                    ProgressState.progress("message.capability_installed_resource", resource),
+                    Reactors.emitFailureHandler()))
+            .collectList()
+            .flatMap(resources -> {
                 // downloading
                 upstream.emitNext(
-                    ProgressState.progress("message.capability_saving_resource", 0.9F),
+                    ProgressState.progress("message.capability_saving_resource"),
                     Reactors.emitFailureHandler());
-
-                List<InstalledResource> resources = cap.getResources();
 
                 // 删除旧的绑定信息
                 Mono<Void> task = resourceRepository
@@ -97,19 +103,20 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                 if (CollectionUtils.isNotEmpty(resources)) {
                     task = task.then(
                         resourceRepository.save(
-                            Collections2.transform(resources, CapabilityResourceInstallEntity::from)
+                            Collections2.transform(resources, res -> CapabilityResourceInstallEntity.from(res, pkg))
                         ).then()
                     );
                 }
 
-                return task.thenReturn(cap);
+                return task.then();
             });
     }
 
     record CapabilityContextImpl(
         DefaultCapabilityResourceManager parent,
         CapabilityPackage pkg,
-        Sinks.ManyWithUpstream<ProgressState<InstalledCapability>> progress)
+        Map<String, Object> configuration,
+        Sinks.ManyWithUpstream<ProgressState<InstalledResource>> progress)
         implements CapabilityProvider.CapabilityContext, Monitor, Logger {
 
         @Override
@@ -120,6 +127,12 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                 .where(CapabilityResourceInstallEntity::getCapabilityId, pkg.getInfo().getId())
                 .fetch()
                 .map(CapabilityResourceInstallEntity::toResource);
+        }
+
+
+        @Override
+        public Map<String, Object> configuration() {
+            return configuration == null ? Map.of() : configuration;
         }
 
         @Override
@@ -154,9 +167,20 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
 
     @Override
     @Transactional(rollbackFor = Throwable.class)
-    public Flux<ProgressState<InstalledCapability>> upgrade(String capabilityId,
-                                                            String targetVersion,
-                                                            Map<String, Object> configuration) {
+    public Flux<ProgressState<InstalledResource>> upgrade(String capabilityId,
+                                                          String targetVersion,
+                                                          Map<String, Object> configuration) {
         return install(capabilityId, targetVersion, configuration);
+    }
+
+    @Override
+    public Flux<InstalledResource> listInstalledResources(String type, Collection<String> dataId) {
+
+        return resourceRepository
+            .createQuery()
+            .is(CapabilityResourceInstallEntity::getType, type)
+            .in(CapabilityResourceInstallEntity::getDataId, dataId)
+            .fetch()
+            .map(CapabilityResourceInstallEntity::toResource);
     }
 }

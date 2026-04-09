@@ -5,17 +5,17 @@ import lombok.Setter;
 
 import java.io.Serial;
 import java.io.Serializable;
-import java.util.Map;
+import java.util.List;
 
 /**
- * 能力包中的单个资源项.
+ * 能力标签分类信息.
  *
  * @author zhouhao
  * @since 2.12
  */
 @Getter
 @Setter
-public class CapabilityResource implements Serializable {
+public class CapabilityTagClassifier implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -24,9 +24,11 @@ public class CapabilityResource implements Serializable {
 
     private String name;
 
-    private String type;
+    private String code;
 
-    private Map<String, Object> metadata;
+    private String description;
 
-    private Map<String, Object> others;
+    private List<CapabilityTagClassifier> children;
+
+    private List<CapabilityTag> tags;
 }

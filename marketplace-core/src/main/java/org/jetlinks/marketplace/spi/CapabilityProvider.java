@@ -7,6 +7,8 @@ import org.jetlinks.marketplace.InstalledResource;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.Map;
+
 /**
  * 能力提供者 SPI
  *
@@ -32,7 +34,7 @@ public interface CapabilityProvider {
      * @param context 安装上下文
      * @return 安装结果
      */
-    Mono<InstalledCapability> install(CapabilityContext context);
+    Flux<InstalledResource> install(CapabilityContext context);
 
 
     interface CapabilityContext {
@@ -56,5 +58,6 @@ public interface CapabilityProvider {
          */
         Monitor monitor();
 
+        Map<String,Object> configuration();
     }
 }

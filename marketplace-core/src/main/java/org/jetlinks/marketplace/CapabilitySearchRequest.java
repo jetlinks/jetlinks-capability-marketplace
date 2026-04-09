@@ -23,9 +23,11 @@ public class CapabilitySearchRequest implements Serializable {
 
     private String keyword;
     private String type;
+
+    private List<String> tagClassifiers;
     private List<String> tags;
-    private LicenseType licenseType;
     private String classifier;
+
     private int pageIndex = 0;
     private int pageSize = 20;
 }

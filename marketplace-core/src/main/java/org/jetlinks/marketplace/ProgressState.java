@@ -26,11 +26,18 @@ public class ProgressState<T> {
         return state;
     }
 
-    public static <T> ProgressState<T> progress(String message, float progress) {
+    public static <T> ProgressState<T> progress(String message) {
         ProgressState<T> state = new ProgressState<>();
         state.setType(Type.progress);
         state.setMessage(LocaleUtils.resolveMessage(message));
-        state.setExtra(progress);
+        return state;
+    }
+
+    public static <T> ProgressState<T> progress(String message, Object data) {
+        ProgressState<T> state = new ProgressState<>();
+        state.setType(Type.progress);
+        state.setMessage(LocaleUtils.resolveMessage(message));
+        state.setExtra(data);
         return state;
     }
 

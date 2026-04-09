@@ -1,9 +1,12 @@
 package org.jetlinks.marketplace.client.impl;
 
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
 import org.jetlinks.marketplace.CapabilityInfo;
 import org.jetlinks.marketplace.CapabilityPackage;
 import org.jetlinks.marketplace.CapabilitySearchRequest;
+import org.jetlinks.marketplace.CapabilityTag;
+import org.jetlinks.marketplace.CapabilityTagClassifier;
 import org.jetlinks.marketplace.CapabilityVersion;
 import org.jetlinks.marketplace.InstalledCapability;
 import org.jetlinks.marketplace.client.configuration.MarketplaceProperties;
@@ -24,6 +27,9 @@ import java.util.List;
  *   <li>{@code GET {base}/api/v1/marketplace/capabilities/{id}/versions}</li>
  *   <li>{@code GET {base}/api/v1/marketplace/capabilities/{id}/versions/{version}/package}</li>
  *   <li>{@code POST {base}/api/v1/marketplace/capabilities/_check-updates} — body: {@code List<InstalledCapability>}}</li>
+ *   <li>{@code GET {base}/api/v1/marketplace/tag-classifiers} — query: {@code type}</li>
+ *   <li>{@code GET {base}/api/v1/marketplace/tag-classifiers/{id}}</li>
+ *   <li>{@code GET {base}/api/v1/marketplace/tags} — query: {@code classifierId}</li>
  * </ul>
  *
  * @author zhouhao
@@ -37,7 +43,11 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
     public HttpCapabilityMarketplaceClient(WebClient.Builder builder, MarketplaceProperties properties) {
         this.webClient = builder
             .baseUrl(properties.getServerUrl())
-            .defaultHeaders(headers -> headers.setBearerAuth(properties.getSecureKey()))
+            .defaultHeaders(headers -> {
+                if (StringUtils.isNotBlank(properties.getSecureKey())) {
+                    headers.setBearerAuth(properties.getSecureKey());
+                }
+            })
             .build();
     }
 
@@ -93,5 +103,44 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
             .bodyValue(installed)
             .retrieve()
             .bodyToFlux(CapabilityInfo.class);
+    }
+
+    @Override
+    public Flux<CapabilityTagClassifier> getTagClassifiers(String type) {
+        return webClient
+            .get()
+            .uri(uriBuilder -> {
+                uriBuilder.path("/marketplace/tag-classifiers");
+                if (type != null) {
+                    uriBuilder.queryParam("type", type);
+                }
+                return uriBuilder.build();
+            })
+            .accept(MediaType.APPLICATION_NDJSON)
+            .retrieve()
+            .bodyToFlux(CapabilityTagClassifier.class);
+    }
+
+    @Override
+    public Mono<CapabilityTagClassifier> getTagClassifier(String id) {
+        return webClient
+            .get()
+            .uri("/marketplace/tag-classifiers/{id}", id)
+            .accept(MediaType.APPLICATION_NDJSON)
+            .retrieve()
+            .bodyToMono(CapabilityTagClassifier.class);
+    }
+
+    @Override
+    public Flux<CapabilityTag> getTags(String classifierId) {
+        return webClient
+            .get()
+            .uri(uriBuilder -> uriBuilder
+                .path("/marketplace/tags")
+                .queryParam("classifierId", classifierId)
+                .build())
+            .accept(MediaType.APPLICATION_NDJSON)
+            .retrieve()
+            .bodyToFlux(CapabilityTag.class);
     }
 }
