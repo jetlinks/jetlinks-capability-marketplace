@@ -93,13 +93,24 @@ public class MarketplaceClientController {
 
 
     @PostMapping("/capabilities/{type}/installed")
-    @Operation(summary = "获取已安装的能力")
+    @Operation(summary = "根据内部数据获取已安装的能力")
     @QueryAction
     public Flux<InstalledResource> listInstalled(@PathVariable String type,
                                                  @RequestBody Mono<List<String>> dataId) {
         // todo 资产权限控制
         return dataId
             .flatMapMany(lst -> resourceManager.listInstalledResources(type, lst));
+    }
+
+    @PostMapping("/capabilities/{type}/{capId}/installed")
+    @Operation(summary = "获取获取已安装的能力")
+    @QueryAction
+    public Flux<InstalledResource> listInstalled(@PathVariable String type,
+                                                 @PathVariable String capId,
+                                                 @RequestBody Mono<List<String>> resourceId) {
+        // todo 资产权限控制
+        return resourceId
+            .flatMapMany(lst -> resourceManager.listInstalledResources(type, capId, lst));
     }
 
 

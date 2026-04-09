@@ -1,6 +1,8 @@
 package org.jetlinks.marketplace.command;
 
 import org.jetlinks.core.command.AbstractCommand;
+import org.jetlinks.core.command.GenericInputCommand;
+import org.jetlinks.marketplace.CapabilitySearchRequest;
 import org.jetlinks.marketplace.InstalledCapability;
 import reactor.core.publisher.Flux;
 
@@ -10,13 +12,15 @@ import reactor.core.publisher.Flux;
  * @author zhouhao
  * @since 2.12
  */
-public class QueryInstalledCapabilityCommand extends AbstractCommand<Flux<InstalledCapability>, QueryInstalledCapabilityCommand> {
+public class QueryInstalledCapabilityCommand
+    extends AbstractCommand<Flux<InstalledCapability>, QueryInstalledCapabilityCommand> implements
+    GenericInputCommand<CapabilitySearchRequest> {
 
-    public String getCapabilityType() {
-        return getOrNull("capabilityType", String.class);
+    public CapabilitySearchRequest asRequest(){
+        return as(CapabilitySearchRequest.class);
     }
 
-    public QueryInstalledCapabilityCommand setCapabilityType(String capabilityType) {
-        return with("capabilityType", capabilityType);
+    public QueryInstalledCapabilityCommand with(CapabilitySearchRequest request){
+        return with((Object) request);
     }
 }

@@ -10,6 +10,7 @@ import org.jetlinks.marketplace.client.web.MarketplaceClientController;
 import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,6 +25,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 @AutoConfiguration
 @EnableConfigurationProperties(MarketplaceProperties.class)
 @EnableEasyormRepository("org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity")
+@ConditionalOnProperty(prefix = "jetlinks.marketplace", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class MarketplaceClientConfiguration {
 
     @Bean

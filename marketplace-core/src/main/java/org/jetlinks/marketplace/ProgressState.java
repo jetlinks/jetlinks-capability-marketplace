@@ -27,16 +27,24 @@ public class ProgressState<T> {
     }
 
     public static <T> ProgressState<T> progress(String message) {
+        return progress(message, message);
+    }
+
+    public static <T> ProgressState<T> progress(String message, String defaultMessage) {
         ProgressState<T> state = new ProgressState<>();
         state.setType(Type.progress);
-        state.setMessage(LocaleUtils.resolveMessage(message));
+        state.setMessage(LocaleUtils.resolveMessage(message, defaultMessage));
         return state;
     }
 
     public static <T> ProgressState<T> progress(String message, Object data) {
+        return progress(message, message, data);
+    }
+
+    public static <T> ProgressState<T> progress(String message, String defaultMessage, Object data) {
         ProgressState<T> state = new ProgressState<>();
         state.setType(Type.progress);
-        state.setMessage(LocaleUtils.resolveMessage(message));
+        state.setMessage(LocaleUtils.resolveMessage(message, defaultMessage));
         state.setExtra(data);
         return state;
     }

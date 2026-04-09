@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "jetlinks.marketplace")
 public class MarketplaceProperties {
 
+    private boolean enabled = true;
     /**
      * 市场服务根 URL
      */

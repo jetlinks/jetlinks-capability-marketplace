@@ -25,5 +25,7 @@ public interface CapabilityResourceManager {
 
     Flux<InstalledResource> listInstalledResources(String type, Collection<String> dataId);
 
+    Flux<InstalledResource> listInstalledResources(String type,String capId, Collection<String> resourceId);
+
 
 }
