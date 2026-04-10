@@ -56,14 +56,10 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
             .install(new CapabilityContextImpl(this, pkg, configuration, upstream, force))
             .doOnNext(resource -> upstream
                 .emitNext(
-                    ProgressState.progress("message.capability_installed_resource", "安装资源成功", resource),
+                    ProgressState.progress("message.capability_installed_resource", "安装成功", resource),
                     Reactors.emitFailureHandler()))
             .collectList()
             .flatMap(resources -> {
-                // downloading
-                upstream.emitNext(
-                    ProgressState.progress("message.capability_saving_resource", "正在保存资源信息"),
-                    Reactors.emitFailureHandler());
 
                 // 删除旧的绑定信息
                 Mono<Void> task = resourceRepository
@@ -130,11 +126,14 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
         progressStream.subscribeTo(
             client
                 .download(capabilityId, version)
-                .switchIfEmpty(Mono.error(() -> new NotFoundException.NoStackTrace("message.capability.not_found", "功能[{}]未找到", capabilityId)))
+                .switchIfEmpty(Mono.error(() -> new NotFoundException.NoStackTrace(
+                    "message.capability.not_found",
+                    "功能未找到",
+                    capabilityId)))
                 .flatMap(pkg -> {
                     // saving...
                     progressStream.emitNext(
-                        ProgressState.progress("message.capability_download_package", "正在下载功能包"),
+                        ProgressState.progress("message.capability_start_install", "开始安装..."),
                         Reactors.emitFailureHandler());
                     return savePackage(pkg, progressStream, configuration, force);
                 })

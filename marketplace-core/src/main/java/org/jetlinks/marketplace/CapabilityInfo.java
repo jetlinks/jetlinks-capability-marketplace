@@ -29,14 +29,13 @@ public class CapabilityInfo implements Serializable {
 
     private String currentVersion;
     private String description;
+    private String document;
     private String author;
     private String icon;
     private List<CapabilityTagInfo> tags;
 
     private String classifier;
     private List<CapabilityDependency> dependencies;
-
-    private String minPlatformVersion;
 
     private Map<String, Object> metadata;
 }

@@ -69,10 +69,10 @@ public class ProgressState<T> {
         return state;
     }
 
-    public static <T> ProgressState<T> success(T data) {
+    public static <T> ProgressState<T> success(String message,String defaultMessage) {
         ProgressState<T> state = new ProgressState<>();
+        state.setMessage(LocaleUtils.resolveMessage(message, defaultMessage));
         state.setType(Type.success);
-        state.setData(data);
         state.setExtra(1F);
         return state;
     }

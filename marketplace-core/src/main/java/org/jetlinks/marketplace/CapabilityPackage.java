@@ -25,6 +25,8 @@ public class CapabilityPackage implements Serializable {
 
     private String version;
 
+    private String minPlatformVersion;
+
     private List<CapabilityResource> resources;
 
 }

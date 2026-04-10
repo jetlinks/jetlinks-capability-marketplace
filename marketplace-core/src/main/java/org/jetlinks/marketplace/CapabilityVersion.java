@@ -14,7 +14,7 @@ import java.io.Serializable;
  */
 @Getter
 @Setter
-public class CapabilityVersion implements Serializable {
+public class CapabilityVersion implements Serializable, Comparable<CapabilityVersion> {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -28,4 +28,17 @@ public class CapabilityVersion implements Serializable {
     private long releaseTime;
     private long size;
     private String checksum;
+
+    public Version version() {
+        return Version.parseNullable(version);
+    }
+
+    public Version minPlatformVersion() {
+        return Version.parseNullable(minPlatformVersion);
+    }
+
+    @Override
+    public int compareTo(CapabilityVersion other) {
+        return Version.compare(version, other == null ? null : other.version);
+    }
 }
