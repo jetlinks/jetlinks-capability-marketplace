@@ -20,6 +20,9 @@ public class CapabilityVersion implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private String version;
+
+    private String summary;
+
     private String releaseNotes;
     private String minPlatformVersion;
     private long releaseTime;

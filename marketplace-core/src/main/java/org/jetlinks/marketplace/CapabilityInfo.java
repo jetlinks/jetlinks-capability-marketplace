@@ -31,7 +31,7 @@ public class CapabilityInfo implements Serializable {
     private String description;
     private String author;
     private String icon;
-    private List<String> tags;
+    private List<CapabilityTagInfo> tags;
 
     private String classifier;
     private List<CapabilityDependency> dependencies;
