@@ -28,6 +28,7 @@ public class CapabilityVersion implements Serializable, Comparable<CapabilityVer
     private long releaseTime;
     private long size;
     private String checksum;
+    private boolean available = true;
 
     public Version version() {
         return Version.parseNullable(version);

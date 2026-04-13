@@ -2,7 +2,7 @@ package org.jetlinks.marketplace;
 
 import lombok.Getter;
 import lombok.Setter;
-import org.jetlinks.marketplace.enums.LicenseType;
+import org.jetlinks.marketplace.enums.CapabilityUseCondition;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -33,6 +33,8 @@ public class CapabilityInfo implements Serializable {
     private String author;
     private String icon;
     private List<CapabilityTagInfo> tags;
+    private boolean available = true;
+    private CapabilityUseCondition useCondition;
 
     private String classifier;
     private List<CapabilityDependency> dependencies;
