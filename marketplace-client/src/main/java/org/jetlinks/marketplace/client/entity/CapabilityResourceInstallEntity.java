@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 import lombok.Setter;
+import org.hswebframework.ezorm.rdb.mapping.annotation.ColumnType;
 import org.hswebframework.ezorm.rdb.mapping.annotation.DefaultValue;
+import org.hswebframework.ezorm.rdb.mapping.annotation.JsonCodec;
 import org.hswebframework.web.api.crud.entity.ExtendableEntity;
 import org.hswebframework.web.api.crud.entity.RecordCreationEntity;
 import org.hswebframework.web.api.crud.entity.RecordModifierEntity;
@@ -16,6 +18,8 @@ import org.jetlinks.marketplace.InstalledResource;
 import javax.persistence.Column;
 import javax.persistence.Index;
 import javax.persistence.Table;
+import java.sql.JDBCType;
+import java.util.List;
 
 /**
  * 能力资源实体.
@@ -67,6 +71,12 @@ public class CapabilityResourceInstallEntity extends ExtendableEntity<String> im
     @Column(length = 32)
     @Schema(description = "版本号")
     private String version;
+
+    @Column
+    @Schema(description = "依赖资源列表")
+    @ColumnType(javaType = String.class, jdbcType = JDBCType.LONGVARCHAR)
+    @JsonCodec
+    private List<String> dependencies;
 
     /**
      * 创建人ID
