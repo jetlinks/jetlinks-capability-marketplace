@@ -14,7 +14,7 @@ public class CapabilityMarketplaceCommandSupport {
     private final CapabilityMarketplaceClient client;
 
     @CommandHandler
-    public Flux<CapabilityInfo> search(QueryInstalledCapabilityCommand request) {
+    public Flux<CapabilityInfo> search(SearchCapabilityCommand request) {
         return client.search(request.asRequest());
     }
 
