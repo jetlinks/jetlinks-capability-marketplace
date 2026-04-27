@@ -24,6 +24,11 @@ public class CapabilityMarketplaceCommandSupport {
     }
 
     @CommandHandler
+    public Mono<CapabilityAvailability> checkAvailability(GetCapabilityAvailabilityCommand request) {
+        return client.checkAvailability(request.getCapabilityId());
+    }
+
+    @CommandHandler
     public Flux<CapabilityVersion> getVersions(GetCapabilityVersionsCommand request) {
         return client.getVersions(request.getCapabilityId());
     }

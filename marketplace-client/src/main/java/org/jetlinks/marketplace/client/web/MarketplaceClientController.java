@@ -7,6 +7,7 @@ import org.hswebframework.web.authorization.annotation.Authorize;
 import org.hswebframework.web.authorization.annotation.QueryAction;
 import org.hswebframework.web.authorization.annotation.Resource;
 import org.hswebframework.web.authorization.annotation.ResourceAction;
+import org.jetlinks.marketplace.CapabilityAvailability;
 import org.jetlinks.marketplace.*;
 import org.jetlinks.marketplace.client.CapabilityResourceManager;
 import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
@@ -39,6 +40,12 @@ public class MarketplaceClientController {
     @Operation(summary = "获取能力详情")
     public Mono<CapabilityInfo> getDetail(@PathVariable String id) {
         return client.getDetail(id);
+    }
+
+    @GetMapping("/capabilities/{id}/availability")
+    @Operation(summary = "获取能力可用性")
+    public Mono<CapabilityAvailability> checkAvailability(@PathVariable String id) {
+        return client.checkAvailability(id);
     }
 
     @GetMapping("/capabilities/{id}/versions")
