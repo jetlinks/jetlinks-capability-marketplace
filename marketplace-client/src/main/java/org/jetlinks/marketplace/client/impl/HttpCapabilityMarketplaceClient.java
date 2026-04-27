@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.hswebframework.web.crud.web.ResponseMessage;
+import org.jetlinks.marketplace.CapabilityAvailability;
 import org.jetlinks.marketplace.CapabilityInfo;
 import org.jetlinks.marketplace.CapabilityPackage;
 import org.jetlinks.marketplace.CapabilitySearchRequest;
@@ -32,6 +33,7 @@ import java.util.List;
  * <ul>
  *   <li>{@code POST {base}/api/v1/marketplace/capabilities/_search} — body: {@link CapabilitySearchRequest}}</li>
  *   <li>{@code GET {base}/api/v1/marketplace/capabilities/{id}}</li>
+ *   <li>{@code GET {base}/api/v1/marketplace/capabilities/{id}/availability}</li>
  *   <li>{@code GET {base}/api/v1/marketplace/capabilities/{id}/versions}</li>
  *   <li>{@code GET {base}/api/v1/marketplace/capabilities/{id}/versions/{version}/package}</li>
  *   <li>{@code POST {base}/api/v1/marketplace/capabilities/_check-updates} — body: {@code List<InstalledCapability>}}</li>
@@ -83,6 +85,17 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
                 .uri("/marketplace/capabilities/{id}", capabilityId)
                 .accept(MediaType.APPLICATION_NDJSON),
             CapabilityInfo.class
+        );
+    }
+
+    @Override
+    public Mono<CapabilityAvailability> checkAvailability(String capabilityId) {
+        return exchangeToMono(
+            webClient
+                .get()
+                .uri("/marketplace/capabilities/{id}/availability", capabilityId)
+                .accept(MediaType.APPLICATION_NDJSON),
+            CapabilityAvailability.class
         );
     }
 
