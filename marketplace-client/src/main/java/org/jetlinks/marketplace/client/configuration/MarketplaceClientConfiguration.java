@@ -6,6 +6,7 @@ import org.jetlinks.marketplace.client.CapabilityResourceManager;
 import org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity;
 import org.jetlinks.marketplace.client.impl.DefaultCapabilityResourceManager;
 import org.jetlinks.marketplace.client.impl.HttpCapabilityMarketplaceClient;
+import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceInterceptor;
 import org.jetlinks.marketplace.client.web.MarketplaceClientController;
 import org.jetlinks.marketplace.client.web.MarketplaceClientResourceController;
 import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
@@ -15,6 +16,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.reactive.function.client.WebClient;
+
+import java.util.List;
 
 /**
  * 能力市场 SDK 自动配置.
@@ -45,8 +48,9 @@ public class MarketplaceClientConfiguration {
     @Bean
     @ConditionalOnMissingBean(CapabilityResourceManager.class)
     public DefaultCapabilityResourceManager capabilityResourceManager(CapabilityMarketplaceClient client,
-                                                                      ReactiveRepository<CapabilityResourceInstallEntity, String> resourceRepository) {
-        return new DefaultCapabilityResourceManager(client, resourceRepository);
+                                                                      ReactiveRepository<CapabilityResourceInstallEntity, String> resourceRepository,
+                                                                      List<CapabilityInstalledResourceInterceptor> installedResourceInterceptors) {
+        return new DefaultCapabilityResourceManager(client, resourceRepository, installedResourceInterceptors);
     }
 
 
