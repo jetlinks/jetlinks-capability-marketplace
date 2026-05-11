@@ -26,5 +26,16 @@ public class MarketplaceProperties {
      */
     private String secureKey = "";
 
+    private Controller controller = new Controller();
+
+    @Getter
+    @Setter
+    public static class Controller {
+
+        /**
+         * 是否注册市场公开查询代理接口。安装、升级和已安装资源接口不受此开关影响。
+         */
+        private boolean publicApiEnabled = true;
+    }
 
 }
