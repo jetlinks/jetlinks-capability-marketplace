@@ -11,6 +11,8 @@ import reactor.core.publisher.Mono;
 @AllArgsConstructor
 public class CapabilityMarketplaceCommandSupport {
 
+    public static final String SERVICE_ID = "marketplaceService";
+
     private final CapabilityMarketplaceClient client;
 
     @CommandHandler
