@@ -7,13 +7,13 @@ import org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity;
 import org.jetlinks.marketplace.client.impl.DefaultCapabilityResourceManager;
 import org.jetlinks.marketplace.client.impl.HttpCapabilityMarketplaceClient;
 import org.jetlinks.marketplace.client.web.MarketplaceClientController;
+import org.jetlinks.marketplace.client.web.MarketplaceClientResourceController;
 import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
@@ -51,9 +51,20 @@ public class MarketplaceClientConfiguration {
 
 
     @Bean
-    public MarketplaceClientController marketplaceClientController(CapabilityMarketplaceClient client,
-                                                                   CapabilityResourceManager resourceManager) {
-        return new MarketplaceClientController(client, resourceManager);
+    @ConditionalOnMissingBean(name = "marketplacePublicController")
+    @ConditionalOnProperty(
+        prefix = "jetlinks.marketplace.controller",
+        name = "public-api-enabled",
+        havingValue = "true",
+        matchIfMissing = true)
+    public MarketplaceClientController marketplaceClientController(CapabilityMarketplaceClient client) {
+        return new MarketplaceClientController(client);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public MarketplaceClientResourceController marketplaceClientResourceController(CapabilityResourceManager resourceManager) {
+        return new MarketplaceClientResourceController(resourceManager);
     }
 
 
