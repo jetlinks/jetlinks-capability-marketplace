@@ -66,14 +66,14 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     public Mono<Void> savePackage(CapabilityPackage pkg,
                                   Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
                                   Map<String, Object> configuration,
-                                  boolean force) {
+                                  boolean reuseInstalledResources) {
         // todo 安装依赖.
         List<CapabilityDependency> dependencies = pkg.getInfo().getDependencies();
 
         CapabilityProvider provider = CapabilityProviders.getOrThrow(pkg.getInfo().getProvider());
 
         return provider
-            .install(new CapabilityContextImpl(this, pkg, configuration, upstream, force))
+            .install(new CapabilityContextImpl(this, pkg, configuration, upstream, reuseInstalledResources))
             .doOnNext(resource -> upstream
                 .emitNext(
                     ProgressState.progress("message.capability_installed_resource", "安装成功", resource),
@@ -167,17 +167,21 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     public Flux<ProgressState<InstalledResource>> install0(String capabilityId,
                                                            String version,
                                                            Map<String, Object> configuration,
-                                                           boolean force) {
+                                                           boolean reuseInstalledResources) {
         return CapabilityOperationContext
             .currentOrCreate()
-            .flatMapMany(operationContext -> install0(capabilityId, version, configuration, force, operationContext)
+            .flatMapMany(operationContext -> install0(capabilityId,
+                                                      version,
+                                                      configuration,
+                                                      reuseInstalledResources,
+                                                      operationContext)
                 .contextWrite(CapabilityOperationContext.makeCurrent(operationContext)));
     }
 
     private Flux<ProgressState<InstalledResource>> install0(String capabilityId,
                                                             String version,
                                                             Map<String, Object> configuration,
-                                                            boolean force,
+                                                            boolean reuseInstalledResources,
                                                             CapabilityOperationContext operationContext) {
         Sinks.ManyWithUpstream<ProgressState<InstalledResource>>
             progressStream = Sinks
@@ -203,7 +207,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                         operationContext,
                         CapabilityOperationEvent.of(CapabilityOperationEvent.Type.installing, capabilityId, pkg.getVersion())
                     )
-                        .then(savePackage(pkg, progressStream, configuration, force))
+                        .then(savePackage(pkg, progressStream, configuration, reuseInstalledResources))
                         .then(reportOperationEvent(
                             operationContext,
                             successEvent(capabilityId, pkg.getVersion())));
@@ -296,12 +300,12 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
         CapabilityPackage pkg,
         Map<String, Object> configuration,
         Sinks.ManyWithUpstream<ProgressState<InstalledResource>> progress,
-        boolean force)
+        boolean reuseInstalledResources)
         implements CapabilityProvider.CapabilityContext, Monitor, Logger {
 
         @Override
         public Flux<InstalledResource> loadInstallResources() {
-            return force ? Flux.empty()
+            return !reuseInstalledResources ? Flux.empty()
                 : parent
                   .loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext.capability(pkg
                                                                                                          .getInfo()

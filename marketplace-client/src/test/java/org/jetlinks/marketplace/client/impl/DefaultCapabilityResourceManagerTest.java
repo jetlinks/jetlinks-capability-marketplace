@@ -47,7 +47,7 @@ class DefaultCapabilityResourceManagerTest {
 
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
-    void shouldFilterInstallResourcesAndDeleteOnlyVisibleRecords() {
+    void shouldIgnoreInstalledResourcesWhenInstallingAndDeleteOnlyVisibleRecords() {
         CapabilityMarketplaceClient client = mock(CapabilityMarketplaceClient.class);
         ReactiveRepository<CapabilityResourceInstallEntity, String> repository = mock(ReactiveRepository.class);
         ReactiveQuery<CapabilityResourceInstallEntity> loadQuery = mock(ReactiveQuery.class);
@@ -71,11 +71,8 @@ class DefaultCapabilityResourceManagerTest {
             .loadInstallResources()
             .collectList()
             .flatMapMany(resources -> {
-                assertEquals(List.of("old-visible"), resources
-                    .stream()
-                    .map(InstalledResource::getResourceId)
-                    .toList());
-                return Flux.just(resource("tool", "new-visible", "tenant-visible"));
+                assertEquals(List.of(), resources);
+                return Flux.just(resource("tool", "new-visible", "tenant-new"));
             })));
 
         DefaultCapabilityResourceManager manager = new DefaultCapabilityResourceManager(
@@ -83,11 +80,71 @@ class DefaultCapabilityResourceManagerTest {
             repository,
             List.of(tenantVisibleOnly));
 
-        assertEquals(2, manager
+        manager
             .install("cap-1", "1.0.0", Map.of())
             .collectList()
-            .block(Duration.ofSeconds(5))
-            .size());
+            .block(Duration.ofSeconds(5));
+
+        ArgumentCaptor<Collection<CapabilityResourceInstallEntity>> savedBindings = ArgumentCaptor.forClass(Collection.class);
+        verify(repository).save(savedBindings.capture());
+        assertEquals(List.of("tenant-new"), savedBindings.getValue()
+            .stream()
+            .map(CapabilityResourceInstallEntity::getDataId)
+            .toList());
+
+        ArgumentCaptor<Collection<String>> deleteIds = ArgumentCaptor.forClass(Collection.class);
+        verify(repository).deleteById(deleteIds.capture());
+        assertEquals(List.of("binding-visible"), deleteIds.getValue().stream().toList());
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void shouldReuseVisibleInstalledResourcesWhenUpgrading() {
+        CapabilityMarketplaceClient client = mock(CapabilityMarketplaceClient.class);
+        ReactiveRepository<CapabilityResourceInstallEntity, String> repository = mock(ReactiveRepository.class);
+        ReactiveQuery<CapabilityResourceInstallEntity> loadQuery = mock(ReactiveQuery.class);
+        ReactiveQuery<CapabilityResourceInstallEntity> deleteQuery = mock(ReactiveQuery.class);
+
+        CapabilityResourceInstallEntity visible = installEntity("binding-visible", "cap-1", "tool", "old-visible", "tenant-visible");
+        CapabilityResourceInstallEntity invisible = installEntity("binding-invisible", "cap-1", "tool", "old-invisible", "tenant-invisible");
+
+        when(client.download("cap-1", "1.0.1")).thenReturn(Mono.just(packageFor("cap-1")));
+        when(repository.createQuery()).thenReturn(loadQuery, deleteQuery);
+        when(loadQuery.fetch()).thenReturn(Flux.just(visible, invisible));
+        when(deleteQuery.fetch()).thenReturn(Flux.just(visible, invisible));
+        when(repository.deleteById(any(Collection.class))).thenReturn(Mono.just(1));
+        when(repository.save(any(Collection.class))).thenReturn(Mono.just(mock(SaveResult.class)));
+
+        CapabilityInstalledResourceInterceptor tenantVisibleOnly = (context, resources) -> resources
+            .filter(entity -> "tenant-visible".equals(entity.getDataId()));
+
+        CapabilityProviders.register(provider(context -> context
+            .loadInstallResources()
+            .collectList()
+            .flatMapMany(resources -> {
+                assertEquals(List.of("old-visible"), resources
+                    .stream()
+                    .map(InstalledResource::getResourceId)
+                    .toList());
+                return Flux.just(resource("tool", "new-visible", resources.get(0).getDataId()));
+            })));
+
+        DefaultCapabilityResourceManager manager = new DefaultCapabilityResourceManager(
+            client,
+            repository,
+            List.of(tenantVisibleOnly));
+
+        manager
+            .upgrade("cap-1", "1.0.1", Map.of())
+            .collectList()
+            .block(Duration.ofSeconds(5));
+
+        ArgumentCaptor<Collection<CapabilityResourceInstallEntity>> savedBindings = ArgumentCaptor.forClass(Collection.class);
+        verify(repository).save(savedBindings.capture());
+        assertEquals(List.of("tenant-visible"), savedBindings.getValue()
+            .stream()
+            .map(CapabilityResourceInstallEntity::getDataId)
+            .toList());
 
         ArgumentCaptor<Collection<String>> deleteIds = ArgumentCaptor.forClass(Collection.class);
         verify(repository).deleteById(deleteIds.capture());
