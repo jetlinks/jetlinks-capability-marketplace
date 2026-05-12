@@ -8,6 +8,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.hswebframework.web.crud.web.ResponseMessage;
 import org.jetlinks.marketplace.CapabilityAvailability;
 import org.jetlinks.marketplace.CapabilityInfo;
+import org.jetlinks.marketplace.CapabilityOperationContext;
+import org.jetlinks.marketplace.CapabilityOperationEvent;
 import org.jetlinks.marketplace.CapabilityPackage;
 import org.jetlinks.marketplace.CapabilitySearchRequest;
 import org.jetlinks.marketplace.CapabilityTag;
@@ -24,6 +26,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.context.ContextView;
 
 import java.util.List;
 
@@ -122,6 +125,18 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
     }
 
     @Override
+    public Mono<Void> reportOperationEvent(CapabilityOperationEvent event) {
+        return exchangeToMono(
+            webClient
+                .post()
+                .uri("/marketplace/operations/_report")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(event),
+            Void.class
+        );
+    }
+
+    @Override
     public Flux<CapabilityInfo> checkUpdates(List<InstalledCapability> installed) {
         return exchangeToFlux(
             webClient
@@ -177,21 +192,31 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
     }
 
     private <T> Mono<T> exchangeToMono(WebClient.RequestHeadersSpec<?> request, Class<T> type) {
-        return request.exchangeToMono(response -> {
-            if (response.statusCode().isError()) {
-                return createResponseException(response).flatMap(Mono::error);
-            }
-            return response.bodyToMono(type);
-        });
+        return Mono.deferContextual(context -> applyOperationContext(request, context)
+            .exchangeToMono(response -> {
+                if (response.statusCode().isError()) {
+                    return createResponseException(response).flatMap(Mono::error);
+                }
+                return response.bodyToMono(type);
+            }));
     }
 
     private <T> Flux<T> exchangeToFlux(WebClient.RequestHeadersSpec<?> request, Class<T> type) {
-        return request.exchangeToFlux(response -> {
-            if (response.statusCode().isError()) {
-                return createResponseException(response).flatMapMany(Flux::error);
-            }
-            return response.bodyToFlux(type);
-        });
+        return Flux.deferContextual(context -> applyOperationContext(request, context)
+            .exchangeToFlux(response -> {
+                if (response.statusCode().isError()) {
+                    return createResponseException(response).flatMapMany(Flux::error);
+                }
+                return response.bodyToFlux(type);
+            }));
+    }
+
+    private WebClient.RequestHeadersSpec<?> applyOperationContext(WebClient.RequestHeadersSpec<?> request,
+                                                                  ContextView context) {
+        CapabilityOperationContext
+            .readId(context)
+            .ifPresent(id -> request.header(CapabilityOperationContext.HEADER_OPERATION_ID, id));
+        return request;
     }
 
     private Mono<? extends Throwable> createResponseException(ClientResponse response) {

@@ -39,6 +39,11 @@ class CapabilityMarketplaceCommandSupportTest {
         CapabilityPackage capabilityPackage = new CapabilityPackage();
         capabilityPackage.setVersion("1.0.0");
 
+        CapabilityOperationEvent operationEvent = CapabilityOperationEvent.of(
+            CapabilityOperationEvent.Type.installing,
+            "cap-1",
+            "1.0.0");
+
         CapabilityTagClassifier classifier = new CapabilityTagClassifier();
         classifier.setId("classifier-1");
 
@@ -53,6 +58,7 @@ class CapabilityMarketplaceCommandSupportTest {
         when(client.checkAvailability("cap-1")).thenReturn(Mono.just(availability));
         when(client.getVersions("cap-1")).thenReturn(Flux.just(version));
         when(client.download("cap-1", "1.0.0")).thenReturn(Mono.just(capabilityPackage));
+        when(client.reportOperationEvent(operationEvent)).thenReturn(Mono.empty());
         when(client.checkUpdates(any())).thenReturn(Flux.just(info));
         when(client.getTagClassifiers("plugin")).thenReturn(Flux.just(classifier));
         when(client.getTagClassifier("classifier-1")).thenReturn(Mono.just(classifier));
@@ -63,6 +69,7 @@ class CapabilityMarketplaceCommandSupportTest {
         assertEquals(availability, support.checkAvailability(new GetCapabilityAvailabilityCommand().setCapabilityId("cap-1")).block());
         assertEquals(List.of(version), support.getVersions(new GetCapabilityVersionsCommand().setCapabilityId("cap-1")).collectList().block());
         assertEquals(capabilityPackage, support.download(new DownloadCapabilityPackageCommand().setCapabilityId("cap-1").setVersion("1.0.0")).block());
+        support.reportOperationEvent(new ReportCapabilityOperationEventCommand().setEvent(operationEvent)).block();
         assertEquals(List.of(info), support.checkUpdates(new CheckCapabilityUpdatesCommand().with("inputs", List.of(installedCapability))).collectList().block());
         assertEquals(List.of(classifier), support.getTagClassifiers(new GetCapabilityTagClassifiersCommand().setType("plugin")).collectList().block());
         assertEquals(classifier, support.getTagClassifier(new GetCapabilityTagClassifierCommand().setType("classifier-1")).block());
@@ -73,6 +80,7 @@ class CapabilityMarketplaceCommandSupportTest {
         verify(client).checkAvailability("cap-1");
         verify(client).getVersions("cap-1");
         verify(client).download("cap-1", "1.0.0");
+        verify(client).reportOperationEvent(operationEvent);
         verify(client).checkUpdates(argThat(installed -> installed != null
             && installed.size() == 1
             && "cap-1".equals(installed.get(0).getCapabilityId())));
