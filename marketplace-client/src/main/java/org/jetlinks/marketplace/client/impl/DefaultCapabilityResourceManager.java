@@ -210,11 +210,12 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
 
         @Override
         public Flux<InstalledResource> loadInstallResources() {
-            return parent
-                .loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext.capability(pkg
-                                                                                                       .getInfo()
-                                                                                                       .getId()))
-                .map(CapabilityResourceInstallEntity::toResource);
+            return !force ? Flux.empty()
+                : parent
+                  .loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext.capability(pkg
+                                                                                                         .getInfo()
+                                                                                                         .getId()))
+                  .map(CapabilityResourceInstallEntity::toResource);
         }
 
 

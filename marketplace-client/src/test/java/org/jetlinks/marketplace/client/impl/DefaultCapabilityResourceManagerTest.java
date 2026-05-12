@@ -40,7 +40,7 @@ class DefaultCapabilityResourceManagerTest {
 
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
-    void shouldFilterInstallResourcesAndDeleteOnlyVisibleRecords() {
+    void shouldIgnoreInstalledResourcesWhenInstallingAndDeleteOnlyVisibleRecords() {
         CapabilityMarketplaceClient client = mock(CapabilityMarketplaceClient.class);
         ReactiveRepository<CapabilityResourceInstallEntity, String> repository = mock(ReactiveRepository.class);
         ReactiveQuery<CapabilityResourceInstallEntity> loadQuery = mock(ReactiveQuery.class);
@@ -63,11 +63,8 @@ class DefaultCapabilityResourceManagerTest {
             .loadInstallResources()
             .collectList()
             .flatMapMany(resources -> {
-                assertEquals(List.of("old-visible"), resources
-                    .stream()
-                    .map(InstalledResource::getResourceId)
-                    .toList());
-                return Flux.just(resource("tool", "new-visible", "tenant-visible"));
+                assertEquals(List.of(), resources);
+                return Flux.just(resource("tool", "new-visible", "tenant-new"));
             })));
 
         DefaultCapabilityResourceManager manager = new DefaultCapabilityResourceManager(
@@ -75,11 +72,17 @@ class DefaultCapabilityResourceManagerTest {
             repository,
             List.of(tenantVisibleOnly));
 
-        assertEquals(2, manager
+        manager
             .install("cap-1", "1.0.0", Map.of())
             .collectList()
-            .block(Duration.ofSeconds(5))
-            .size());
+            .block(Duration.ofSeconds(5));
+
+        ArgumentCaptor<Collection<CapabilityResourceInstallEntity>> savedBindings = ArgumentCaptor.forClass(Collection.class);
+        verify(repository).save(savedBindings.capture());
+        assertEquals(List.of("tenant-new"), savedBindings.getValue()
+            .stream()
+            .map(CapabilityResourceInstallEntity::getDataId)
+            .toList());
 
         ArgumentCaptor<Collection<String>> deleteIds = ArgumentCaptor.forClass(Collection.class);
         verify(repository).deleteById(deleteIds.capture());
