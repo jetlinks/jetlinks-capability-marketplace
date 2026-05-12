@@ -64,14 +64,14 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     public Mono<Void> savePackage(CapabilityPackage pkg,
                                   Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
                                   Map<String, Object> configuration,
-                                  boolean force) {
+                                  boolean reuseInstalledResources) {
         // todo 安装依赖.
         List<CapabilityDependency> dependencies = pkg.getInfo().getDependencies();
 
         CapabilityProvider provider = CapabilityProviders.getOrThrow(pkg.getInfo().getProvider());
 
         return provider
-            .install(new CapabilityContextImpl(this, pkg, configuration, upstream, force))
+            .install(new CapabilityContextImpl(this, pkg, configuration, upstream, reuseInstalledResources))
             .doOnNext(resource -> upstream
                 .emitNext(
                     ProgressState.progress("message.capability_installed_resource", "安装成功", resource),
@@ -165,7 +165,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     public Flux<ProgressState<InstalledResource>> install0(String capabilityId,
                                                            String version,
                                                            Map<String, Object> configuration,
-                                                           boolean force) {
+                                                           boolean reuseInstalledResources) {
         Sinks.ManyWithUpstream<ProgressState<InstalledResource>>
             progressStream = Sinks
             .unsafe()
@@ -184,7 +184,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                     progressStream.emitNext(
                         ProgressState.progress("message.capability_start_install", "开始安装..."),
                         Reactors.emitFailureHandler());
-                    return savePackage(pkg, progressStream, configuration, force);
+                    return savePackage(pkg, progressStream, configuration, reuseInstalledResources);
                 })
                 .then(Mono.<ProgressState<InstalledResource>>empty())
                 .onErrorResume(err -> Mono.just(ProgressState.error(err)))
@@ -205,12 +205,12 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
         CapabilityPackage pkg,
         Map<String, Object> configuration,
         Sinks.ManyWithUpstream<ProgressState<InstalledResource>> progress,
-        boolean force)
+        boolean reuseInstalledResources)
         implements CapabilityProvider.CapabilityContext, Monitor, Logger {
 
         @Override
         public Flux<InstalledResource> loadInstallResources() {
-            return force ? Flux.empty()
+            return !reuseInstalledResources ? Flux.empty()
                 : parent
                   .loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext.capability(pkg
                                                                                                          .getInfo()
