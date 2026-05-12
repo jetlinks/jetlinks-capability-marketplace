@@ -4,6 +4,7 @@ import org.jetlinks.marketplace.CapabilityInfo;
 import org.jetlinks.marketplace.CapabilityAvailability;
 import org.jetlinks.marketplace.CapabilityPackage;
 import org.jetlinks.marketplace.CapabilitySearchRequest;
+import org.jetlinks.marketplace.CapabilityOperationEvent;
 import org.jetlinks.marketplace.CapabilityTag;
 import org.jetlinks.marketplace.CapabilityTagClassifier;
 import org.jetlinks.marketplace.CapabilityVersion;
@@ -50,6 +51,10 @@ public interface CapabilityMarketplaceClient {
     Flux<CapabilityVersion> getVersions(String capabilityId);
 
     Mono<CapabilityPackage> download(String capabilityId, String version);
+
+    default Mono<Void> reportOperationEvent(CapabilityOperationEvent event) {
+        return Mono.empty();
+    }
 
     Flux<CapabilityInfo> checkUpdates(List<InstalledCapability> installed);
 

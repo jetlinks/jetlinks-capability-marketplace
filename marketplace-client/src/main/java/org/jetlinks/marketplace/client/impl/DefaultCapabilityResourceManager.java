@@ -1,6 +1,7 @@
 package org.jetlinks.marketplace.client.impl;
 
 import com.google.common.collect.Collections2;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveRepository;
 import org.hswebframework.web.exception.NotFoundException;
@@ -29,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+@Slf4j
 public class DefaultCapabilityResourceManager implements CapabilityResourceManager {
 
     private final CapabilityMarketplaceClient client;
@@ -166,6 +168,17 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                                                            String version,
                                                            Map<String, Object> configuration,
                                                            boolean force) {
+        return CapabilityOperationContext
+            .currentOrCreate()
+            .flatMapMany(operationContext -> install0(capabilityId, version, configuration, force, operationContext)
+                .contextWrite(CapabilityOperationContext.makeCurrent(operationContext)));
+    }
+
+    private Flux<ProgressState<InstalledResource>> install0(String capabilityId,
+                                                            String version,
+                                                            Map<String, Object> configuration,
+                                                            boolean force,
+                                                            CapabilityOperationContext operationContext) {
         Sinks.ManyWithUpstream<ProgressState<InstalledResource>>
             progressStream = Sinks
             .unsafe()
@@ -173,8 +186,10 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
             .multicastOnBackpressureBuffer();
 
         progressStream.subscribeTo(
-            client
-                .download(capabilityId, version)
+            reportOperationEvent(
+                operationContext,
+                CapabilityOperationEvent.of(CapabilityOperationEvent.Type.download, capabilityId, version))
+                .then(client.download(capabilityId, version))
                 .switchIfEmpty(Mono.error(() -> new NotFoundException.NoStackTrace(
                     "message.capability.not_found",
                     "功能未找到",
@@ -184,11 +199,19 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                     progressStream.emitNext(
                         ProgressState.progress("message.capability_start_install", "开始安装..."),
                         Reactors.emitFailureHandler());
-                    return savePackage(pkg, progressStream, configuration, force);
+                    return reportOperationEvent(
+                        operationContext,
+                        CapabilityOperationEvent.of(CapabilityOperationEvent.Type.installing, capabilityId, pkg.getVersion())
+                    )
+                        .then(savePackage(pkg, progressStream, configuration, force))
+                        .then(reportOperationEvent(
+                            operationContext,
+                            successEvent(capabilityId, pkg.getVersion())));
                 })
                 .then(Mono.<ProgressState<InstalledResource>>empty())
                 .onErrorResume(err -> Mono.just(ProgressState.error(err)))
                 .doFinally(ignore -> progressStream.emitComplete(Reactors.emitFailureHandler()))
+                .contextWrite(CapabilityOperationContext.makeCurrent(operationContext))
         );
 
 
@@ -196,7 +219,75 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
             .asFlux()
             .doOnSubscribe((s) -> progressStream.emitNext(
                 ProgressState.progress("message.capability_download_package", "正在下载功能包"),
-                Reactors.emitFailureHandler()));
+                Reactors.emitFailureHandler()))
+            .concatMap(state -> reportOperationEvent(operationContext,
+                                                     progressEvent(capabilityId, version, state))
+                .thenReturn(state))
+            .contextWrite(CapabilityOperationContext.makeCurrent(operationContext));
+    }
+
+    private CapabilityOperationEvent progressEvent(String capabilityId,
+                                                   String version,
+                                                   ProgressState<InstalledResource> state) {
+        CapabilityOperationEvent event = CapabilityOperationEvent.of(
+            switch (state.getType()) {
+                case error -> CapabilityOperationEvent.Type.failed;
+                case log -> CapabilityOperationEvent.Type.log;
+                case success -> CapabilityOperationEvent.Type.success;
+                default -> CapabilityOperationEvent.Type.progress;
+            },
+            capabilityId,
+            version
+        );
+        event.setMessage(state.getMessage());
+        if (state.getType() == ProgressState.Type.error) {
+            event.setErrorMessage(state.getMessage());
+        }
+        if (state.getType() == ProgressState.Type.log) {
+            event.setLevel(String.valueOf(state.getExtra()));
+        }
+        if (state.getExtra() instanceof InstalledResource resource) {
+            event.setResource(resource);
+        }
+        return event;
+    }
+
+    private CapabilityOperationEvent successEvent(String capabilityId,
+                                                  String version) {
+        CapabilityOperationEvent event = CapabilityOperationEvent.of(
+            CapabilityOperationEvent.Type.success,
+            capabilityId,
+            version
+        );
+        event.setMessage("安装完成");
+        return event;
+    }
+
+    private Mono<Void> reportOperationEvent(CapabilityOperationContext context,
+                                            CapabilityOperationEvent event) {
+        if (event == null) {
+            return Mono.empty();
+        }
+        event.setOperationId(context.getId());
+        if (event.getInstallKey() == null) {
+            event.setInstallKey(CapabilityOperationEvent.DEFAULT_INSTALL_KEY);
+        }
+        if (event.getTimestamp() == null) {
+            event.setTimestamp(System.currentTimeMillis());
+        }
+        return Mono
+            .defer(() -> {
+                Mono<Void> report = client.reportOperationEvent(event);
+                return report == null ? Mono.empty() : report;
+            })
+            .onErrorResume(error -> {
+                log.warn("report capability operation event failed, operationId:{}, capabilityId:{}, type:{}",
+                         event.getOperationId(),
+                         event.getCapabilityId(),
+                         event.getType(),
+                         error);
+                return Mono.empty();
+            });
     }
 
 

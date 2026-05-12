@@ -39,6 +39,11 @@ public class CapabilityMarketplaceCommandSupport {
     }
 
     @CommandHandler
+    public Mono<Void> reportOperationEvent(ReportCapabilityOperationEventCommand request) {
+        return client.reportOperationEvent(request.getEvent());
+    }
+
+    @CommandHandler
     public Flux<CapabilityInfo> checkUpdates(CheckCapabilityUpdatesCommand request) {
         return client.checkUpdates(request.getInstalled());
     }

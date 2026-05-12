@@ -2,6 +2,8 @@ package org.jetlinks.marketplace.client.impl;
 
 import org.jetlinks.marketplace.CapabilityAvailability;
 import org.jetlinks.marketplace.CapabilityInfo;
+import org.jetlinks.marketplace.CapabilityOperationContext;
+import org.jetlinks.marketplace.CapabilityOperationEvent;
 import org.jetlinks.marketplace.CapabilityPackage;
 import org.jetlinks.marketplace.CapabilitySearchRequest;
 import org.jetlinks.marketplace.CapabilityTag;
@@ -100,6 +102,55 @@ class HttpCapabilityMarketplaceClientTest {
         assertThat(availability.isAvailable()).isFalse();
         assertThat(availability.getReasonCode()).isEqualTo(CapabilityAvailability.REASON_PURCHASE_REQUIRED);
         assertThat(availability.getPurchaseUrl()).isEqualTo("/marketplace/capabilities/cap-1/orders");
+    }
+
+    @Test
+    void shouldReportOperationEventWithOperationHeader() {
+        AtomicReference<ClientRequest> requestRef = new AtomicReference<>();
+        HttpCapabilityMarketplaceClient client = createClient(request -> {
+            requestRef.set(request);
+            return Mono.just(ClientResponse.create(HttpStatus.NO_CONTENT).build());
+        });
+
+        CapabilityOperationEvent event = CapabilityOperationEvent.of(
+            CapabilityOperationEvent.Type.installing,
+            "cap-1",
+            "1.0.0");
+
+        client
+            .reportOperationEvent(event)
+            .contextWrite(CapabilityOperationContext.makeCurrent("operation-1"))
+            .block();
+
+        assertThat(requestRef.get()).isNotNull();
+        assertThat(requestRef.get().method().name()).isEqualTo("POST");
+        assertThat(requestRef.get().url().getPath()).isEqualTo("/marketplace/operations/_report");
+        assertThat(requestRef.get().headers().getFirst(CapabilityOperationContext.HEADER_OPERATION_ID))
+            .isEqualTo("operation-1");
+        assertThat(requestRef.get().headers().getFirst(HttpHeaders.CONTENT_TYPE))
+            .contains(MediaType.APPLICATION_JSON_VALUE);
+    }
+
+    @Test
+    void shouldPropagateOperationHeaderForMarketplaceRequests() {
+        AtomicReference<ClientRequest> requestRef = new AtomicReference<>();
+        HttpCapabilityMarketplaceClient client = createClient(request -> {
+            requestRef.set(request);
+            return Mono.just(jsonResponse("""
+                                          {"version":"1.0.0"}
+                                          """));
+        });
+
+        client
+            .download("cap-1", "1.0.0")
+            .contextWrite(CapabilityOperationContext.makeCurrent("operation-1"))
+            .block();
+
+        assertThat(requestRef.get()).isNotNull();
+        assertThat(requestRef.get().url().getPath())
+            .isEqualTo("/marketplace/capabilities/cap-1/versions/1.0.0/package");
+        assertThat(requestRef.get().headers().getFirst(CapabilityOperationContext.HEADER_OPERATION_ID))
+            .isEqualTo("operation-1");
     }
 
     @Test

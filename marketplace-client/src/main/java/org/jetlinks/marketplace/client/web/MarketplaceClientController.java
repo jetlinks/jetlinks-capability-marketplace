@@ -48,6 +48,12 @@ public class MarketplaceClientController {
         return client.getVersions(id);
     }
 
+    @PostMapping("/operations/_report")
+    @Operation(summary = "上报能力操作事件")
+    public Mono<Void> reportOperationEvent(@RequestBody Mono<CapabilityOperationEvent> event) {
+        return event.flatMap(client::reportOperationEvent);
+    }
+
     @PostMapping("/capabilities/_check-updates")
     @Operation(summary = "检查更新")
     public Flux<CapabilityInfo> checkUpdates(@RequestBody List<InstalledCapability> installed) {

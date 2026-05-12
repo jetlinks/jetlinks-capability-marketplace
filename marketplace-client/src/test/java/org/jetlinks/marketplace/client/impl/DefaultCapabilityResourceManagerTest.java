@@ -4,6 +4,8 @@ import org.hswebframework.ezorm.rdb.mapping.ReactiveQuery;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveRepository;
 import org.hswebframework.ezorm.rdb.mapping.defaults.SaveResult;
 import org.jetlinks.marketplace.CapabilityInfo;
+import org.jetlinks.marketplace.CapabilityOperationContext;
+import org.jetlinks.marketplace.CapabilityOperationEvent;
 import org.jetlinks.marketplace.CapabilityPackage;
 import org.jetlinks.marketplace.InstalledResource;
 import org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity;
@@ -19,12 +21,17 @@ import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -50,6 +57,7 @@ class DefaultCapabilityResourceManagerTest {
         CapabilityResourceInstallEntity invisible = installEntity("binding-invisible", "cap-1", "tool", "old-invisible", "tenant-invisible");
 
         when(client.download("cap-1", "1.0.0")).thenReturn(Mono.just(packageFor("cap-1")));
+        when(client.reportOperationEvent(any())).thenReturn(Mono.empty());
         when(repository.createQuery()).thenReturn(loadQuery, deleteQuery);
         when(loadQuery.fetch()).thenReturn(Flux.just(visible, invisible));
         when(deleteQuery.fetch()).thenReturn(Flux.just(visible, invisible));
@@ -84,6 +92,82 @@ class DefaultCapabilityResourceManagerTest {
         ArgumentCaptor<Collection<String>> deleteIds = ArgumentCaptor.forClass(Collection.class);
         verify(repository).deleteById(deleteIds.capture());
         assertEquals(List.of("binding-visible"), deleteIds.getValue().stream().toList());
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void shouldReportInstallEventsWithSameOperationId() {
+        CapabilityMarketplaceClient client = mock(CapabilityMarketplaceClient.class);
+        ReactiveRepository<CapabilityResourceInstallEntity, String> repository = mock(ReactiveRepository.class);
+        ReactiveQuery<CapabilityResourceInstallEntity> query = mock(ReactiveQuery.class);
+        AtomicReference<String> providerOperationId = new AtomicReference<>();
+
+        when(client.download("cap-1", "1.0.0")).thenReturn(Mono.just(packageFor("cap-1")));
+        when(client.reportOperationEvent(any())).thenReturn(Mono.empty());
+        when(repository.createQuery()).thenReturn(query);
+        when(query.fetch()).thenReturn(Flux.empty());
+        when(repository.save(any(Collection.class))).thenReturn(Mono.just(mock(SaveResult.class)));
+
+        CapabilityProviders.register(provider(context -> CapabilityOperationContext
+            .current()
+            .flatMapMany(operationContext -> {
+                providerOperationId.set(operationContext.getId());
+                return Flux.just(resource("tool", "new-visible", "tenant-visible"));
+            })));
+
+        DefaultCapabilityResourceManager manager = new DefaultCapabilityResourceManager(client, repository);
+
+        manager
+            .install("cap-1", "1.0.0", Map.of())
+            .collectList()
+            .block(Duration.ofSeconds(5));
+
+        ArgumentCaptor<CapabilityOperationEvent> eventCaptor = ArgumentCaptor.forClass(CapabilityOperationEvent.class);
+        verify(client, atLeast(1)).reportOperationEvent(eventCaptor.capture());
+
+        List<CapabilityOperationEvent> events = eventCaptor.getAllValues();
+        List<String> operationIds = events
+            .stream()
+            .map(CapabilityOperationEvent::getOperationId)
+            .distinct()
+            .collect(Collectors.toList());
+
+        assertEquals(1, operationIds.size());
+        assertEquals(operationIds.get(0), providerOperationId.get());
+        EnumSet<CapabilityOperationEvent.Type> types = events
+            .stream()
+            .map(CapabilityOperationEvent::getType)
+            .collect(Collectors.toCollection(() -> EnumSet.noneOf(CapabilityOperationEvent.Type.class)));
+
+        assertTrue(types.contains(CapabilityOperationEvent.Type.download));
+        assertTrue(types.contains(CapabilityOperationEvent.Type.installing));
+        assertTrue(types.contains(CapabilityOperationEvent.Type.progress));
+        assertTrue(types.contains(CapabilityOperationEvent.Type.success));
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void shouldIgnoreReportFailureWhenInstalling() {
+        CapabilityMarketplaceClient client = mock(CapabilityMarketplaceClient.class);
+        ReactiveRepository<CapabilityResourceInstallEntity, String> repository = mock(ReactiveRepository.class);
+        ReactiveQuery<CapabilityResourceInstallEntity> query = mock(ReactiveQuery.class);
+
+        when(client.download("cap-1", "1.0.0")).thenReturn(Mono.just(packageFor("cap-1")));
+        when(client.reportOperationEvent(any())).thenReturn(Mono.error(new RuntimeException("report failed")));
+        when(repository.createQuery()).thenReturn(query);
+        when(query.fetch()).thenReturn(Flux.empty());
+        when(repository.save(any(Collection.class))).thenReturn(Mono.just(mock(SaveResult.class)));
+
+        CapabilityProviders.register(provider(context -> Flux.just(resource("tool", "new-visible", "tenant-visible"))));
+
+        DefaultCapabilityResourceManager manager = new DefaultCapabilityResourceManager(client, repository);
+
+        manager
+            .install("cap-1", "1.0.0", Map.of())
+            .collectList()
+            .block(Duration.ofSeconds(5));
+
+        verify(repository).save(any(Collection.class));
     }
 
     @Test
