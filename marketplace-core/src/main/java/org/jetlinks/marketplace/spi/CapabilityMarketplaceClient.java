@@ -13,7 +13,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * 能力市场服务.
@@ -58,14 +57,6 @@ public interface CapabilityMarketplaceClient {
     }
 
     Flux<CapabilityInfo> checkUpdates(List<InstalledCapability> installed);
-
-    default Mono<Map<String, Object>> searchDeviceTemplates(Map<String, Object> request) {
-        return Mono.error(new UnsupportedOperationException("searchDeviceTemplates"));
-    }
-
-    default Mono<Map<String, Object>> getDeviceTemplateDetail(String templateId, String resourceId) {
-        return Mono.error(new UnsupportedOperationException("getDeviceTemplateDetail"));
-    }
 
     /**
      * 获取标签分类.

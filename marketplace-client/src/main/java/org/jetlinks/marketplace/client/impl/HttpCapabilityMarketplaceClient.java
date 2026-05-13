@@ -30,7 +30,6 @@ import reactor.core.publisher.Mono;
 import reactor.util.context.ContextView;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * 基于 WebClient 的市场 HTTP 客户端（约定 REST 路径，见类注释）.
@@ -55,9 +54,6 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    private static final ParameterizedTypeReference<ResponseMessage<Map<String, Object>>> MAP_RESPONSE_TYPE =
-        new ParameterizedTypeReference<>() {
-        };
 
     private final WebClient webClient;
 
@@ -155,36 +151,6 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
     }
 
     @Override
-    public Mono<Map<String, Object>> searchDeviceTemplates(Map<String, Object> request) {
-        return exchangeToResponseResultMono(
-            webClient
-                .post()
-                .uri("/marketplace/device-templates/_search")
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
-                .bodyValue(request),
-            MAP_RESPONSE_TYPE
-        );
-    }
-
-    @Override
-    public Mono<Map<String, Object>> getDeviceTemplateDetail(String templateId, String resourceId) {
-        return exchangeToResponseResultMono(
-            webClient
-                .get()
-                .uri(uriBuilder -> {
-                    uriBuilder.path("/marketplace/device-templates/{id}");
-                    if (StringUtils.isNotBlank(resourceId)) {
-                        uriBuilder.queryParam("resourceId", resourceId);
-                    }
-                    return uriBuilder.build(templateId);
-                })
-                .accept(MediaType.APPLICATION_JSON),
-            MAP_RESPONSE_TYPE
-        );
-    }
-
-    @Override
     public Flux<CapabilityTagClassifier> getTagClassifiers(String type) {
         return exchangeToFlux(
             webClient
@@ -243,11 +209,6 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
             }
             return response.bodyToMono(type);
         });
-    }
-
-    private <T> Mono<T> exchangeToResponseResultMono(WebClient.RequestHeadersSpec<?> request,
-                                                     ParameterizedTypeReference<ResponseMessage<T>> type) {
-        return exchangeToMono(request, type).map(ResponseMessage::getResult);
     }
 
     private <T> Flux<T> exchangeToFlux(WebClient.RequestHeadersSpec<?> request, Class<T> type) {
