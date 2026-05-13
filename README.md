@@ -18,8 +18,13 @@ JetLinks 能力市场SDK
 
 - `download`：开始下载能力包，只作为操作流水。
 - `installing`：进入安装流程，可用于服务端维护当前安装状态。
+- `action`：操作过程中 `ActionRecorder` 记录的动作摘要事件。
 - `progress` / `log`：进度与日志流水。
 - `success` / `failed`：安装最终状态。
+
+Provider 可通过 `CapabilityContext.monitor().recorder()` 记录结构化动作信息。Recorder
+产出的完整 `ActionRecord` 会放到安装进度流 `ProgressState.extra` 中，便于前端按结构化数据引导跳转；
+`CapabilityOperationEvent` 仍只上报消息摘要和状态，不承载完整结构化细节。
 
 `CapabilityOperationContext` 只保存 `operationId`，不承载项目、用户、来源或运行时等业务字段；
 这些信息由调用侧已有的租户、认证或链路上下文解析。

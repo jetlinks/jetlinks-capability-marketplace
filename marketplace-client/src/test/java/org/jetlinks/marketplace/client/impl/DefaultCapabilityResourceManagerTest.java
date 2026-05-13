@@ -4,10 +4,13 @@ import org.hswebframework.ezorm.rdb.mapping.ReactiveQuery;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveRepository;
 import org.hswebframework.ezorm.rdb.mapping.defaults.SaveResult;
 import org.hswebframework.web.exception.ValidationException;
+import org.jetlinks.core.monitor.recorder.ActionRecord;
+import org.jetlinks.core.monitor.recorder.ActionRecorder;
 import org.jetlinks.marketplace.CapabilityInstallRequest;
 import org.jetlinks.marketplace.CapabilityInfo;
 import org.jetlinks.marketplace.CapabilityOperationContext;
 import org.jetlinks.marketplace.CapabilityOperationEvent;
+import org.jetlinks.marketplace.CapabilityOperationType;
 import org.jetlinks.marketplace.CapabilityPackage;
 import org.jetlinks.marketplace.InstalledResource;
 import org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity;
@@ -100,6 +103,7 @@ class DefaultCapabilityResourceManagerTest {
         CapabilityResourceInstallEntity invisible = installEntity("binding-invisible", "cap-1", "tool", "old-invisible", "tenant-invisible");
 
         when(client.download("cap-1", "1.0.1")).thenReturn(Mono.just(packageFor("cap-1")));
+        when(client.reportOperationEvent(any())).thenReturn(Mono.empty());
         when(repository.createQuery()).thenReturn(loadQuery);
         when(loadQuery.fetch()).thenReturn(Flux.just(visible, invisible));
         when(repository.deleteById(any(Collection.class))).thenReturn(Mono.just(1));
@@ -139,6 +143,7 @@ class DefaultCapabilityResourceManagerTest {
         ArgumentCaptor<Collection<String>> deleteIds = ArgumentCaptor.forClass(Collection.class);
         verify(repository).deleteById(deleteIds.capture());
         assertEquals(List.of("binding-visible"), deleteIds.getValue().stream().toList());
+
     }
 
     @Test
@@ -281,15 +286,90 @@ class DefaultCapabilityResourceManagerTest {
 
         assertEquals(1, operationIds.size());
         assertEquals(operationIds.get(0), providerOperationId.get());
-        EnumSet<CapabilityOperationEvent.Type> types = events
+        EnumSet<CapabilityOperationType> types = events
             .stream()
             .map(CapabilityOperationEvent::getType)
-            .collect(Collectors.toCollection(() -> EnumSet.noneOf(CapabilityOperationEvent.Type.class)));
+            .collect(Collectors.toCollection(() -> EnumSet.noneOf(CapabilityOperationType.class)));
 
-        assertTrue(types.contains(CapabilityOperationEvent.Type.download));
-        assertTrue(types.contains(CapabilityOperationEvent.Type.installing));
-        assertTrue(types.contains(CapabilityOperationEvent.Type.progress));
-        assertTrue(types.contains(CapabilityOperationEvent.Type.success));
+        assertTrue(types.contains(CapabilityOperationType.download));
+        assertTrue(types.contains(CapabilityOperationType.installing));
+        assertTrue(types.contains(CapabilityOperationType.progress));
+        assertTrue(types.contains(CapabilityOperationType.success));
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void shouldReportStructuredRecorderEvents() {
+        CapabilityMarketplaceClient client = mock(CapabilityMarketplaceClient.class);
+        ReactiveRepository<CapabilityResourceInstallEntity, String> repository = mock(ReactiveRepository.class);
+        ReactiveQuery<CapabilityResourceInstallEntity> query = mock(ReactiveQuery.class);
+
+        when(client.download("cap-1", "1.0.0")).thenReturn(Mono.just(packageFor("cap-1")));
+        when(client.reportOperationEvent(any())).thenReturn(Mono.empty());
+        when(repository.createQuery()).thenReturn(query);
+        when(query.fetch()).thenReturn(Flux.empty());
+        when(repository.save(any(Collection.class))).thenReturn(Mono.just(mock(SaveResult.class)));
+
+        CapabilityProviders.register(provider(context -> {
+            ActionRecorder<Object> root = context
+                .monitor()
+                .recorder()
+                .action("marketplace.install");
+            root
+                .child("ui.open-detail")
+                .tag("page", "skill")
+                .attribute("id", "skill-1")
+                .complete();
+            root.complete();
+            return Flux.just(resource("tool", "new-visible", "tenant-visible"));
+        }));
+
+        DefaultCapabilityResourceManager manager = new DefaultCapabilityResourceManager(client, repository);
+
+        List<org.jetlinks.marketplace.ProgressState<InstalledResource>> states = manager
+            .install("cap-1", "1.0.0", Map.of())
+            .collectList()
+            .block(Duration.ofSeconds(5));
+
+        List<ActionRecord> records = states
+            .stream()
+            .map(org.jetlinks.marketplace.ProgressState::getExtra)
+            .filter(ActionRecord.class::isInstance)
+            .map(ActionRecord.class::cast)
+            .toList();
+
+        assertEquals(2, records.size());
+
+        ActionRecord root = records
+            .stream()
+            .filter(record -> "marketplace.install".contentEquals(record.getAction()))
+            .findFirst()
+            .orElseThrow();
+        ActionRecord child = records
+            .stream()
+            .filter(record -> "ui.open-detail".contentEquals(record.getAction()))
+            .findFirst()
+            .orElseThrow();
+
+        assertEquals(root.getId(), child.getParentId());
+        assertEquals("skill", child.getTags().get("page"));
+        assertEquals("skill-1", child.getAttributes().get("id"));
+
+        ArgumentCaptor<CapabilityOperationEvent> eventCaptor = ArgumentCaptor.forClass(CapabilityOperationEvent.class);
+        verify(client, atLeast(1)).reportOperationEvent(eventCaptor.capture());
+
+        List<CapabilityOperationEvent> recorderEvents = eventCaptor
+            .getAllValues()
+            .stream()
+            .filter(event -> "ui.open-detail".equals(event.getMessage())
+                || "marketplace.install".equals(event.getMessage()))
+            .toList();
+
+        assertEquals(2, recorderEvents.size());
+        assertTrue(recorderEvents
+                       .stream()
+                       .map(CapabilityOperationEvent::getType)
+                       .allMatch(CapabilityOperationType.action::equals));
     }
 
     @Test

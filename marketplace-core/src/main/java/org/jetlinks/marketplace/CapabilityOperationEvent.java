@@ -26,7 +26,7 @@ public class CapabilityOperationEvent implements Serializable {
 
     private String operationId;
 
-    private Type type;
+    private CapabilityOperationType type;
 
     private String capabilityId;
 
@@ -48,7 +48,7 @@ public class CapabilityOperationEvent implements Serializable {
 
     private List<InstalledResource> resources;
 
-    public static CapabilityOperationEvent of(Type type,
+    public static CapabilityOperationEvent of(CapabilityOperationType type,
                                               String capabilityId,
                                               String version) {
         CapabilityOperationEvent event = new CapabilityOperationEvent();
@@ -60,12 +60,4 @@ public class CapabilityOperationEvent implements Serializable {
         return event;
     }
 
-    public enum Type {
-        download,
-        installing,
-        progress,
-        log,
-        success,
-        failed
-    }
 }

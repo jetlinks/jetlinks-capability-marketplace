@@ -9,6 +9,10 @@ import org.hswebframework.web.exception.ValidationException;
 import org.jetlinks.core.monitor.Monitor;
 import org.jetlinks.core.monitor.logger.Logger;
 import org.jetlinks.core.monitor.metrics.Metrics;
+import org.jetlinks.core.monitor.recorder.AbstractActionRecorder;
+import org.jetlinks.core.monitor.recorder.ActionRecord;
+import org.jetlinks.core.monitor.recorder.ActionRecorder;
+import org.jetlinks.core.monitor.recorder.Recorder;
 import org.jetlinks.core.monitor.tracer.Tracer;
 import org.jetlinks.core.utils.Reactors;
 import org.jetlinks.marketplace.*;
@@ -25,6 +29,7 @@ import org.springframework.util.StringUtils;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
+import reactor.util.context.Context;
 
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -212,7 +217,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
         progressStream.subscribeTo(
             reportOperationEvent(
                 operationContext,
-                CapabilityOperationEvent.of(CapabilityOperationEvent.Type.download, capabilityId, version))
+                CapabilityOperationEvent.of(CapabilityOperationType.download, capabilityId, version))
                 .then(client.download(capabilityId, version))
                 .switchIfEmpty(Mono.error(() -> new NotFoundException.NoStackTrace(
                     "message.capability.not_found",
@@ -225,7 +230,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                         Reactors.emitFailureHandler());
                     return reportOperationEvent(
                         operationContext,
-                        CapabilityOperationEvent.of(CapabilityOperationEvent.Type.installing, capabilityId, pkg.getVersion())
+                        CapabilityOperationEvent.of(CapabilityOperationType.installing, capabilityId, pkg.getVersion())
                     )
                         .then(savePackage(pkg, progressStream, request, installedResources))
                         .then(reportOperationEvent(
@@ -291,13 +296,16 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     private CapabilityOperationEvent progressEvent(String capabilityId,
                                                    String version,
                                                    ProgressState<InstalledResource> state) {
+        CapabilityOperationType type = state.getExtra() instanceof ActionRecord
+            ? CapabilityOperationType.action
+            : switch (state.getType()) {
+                case error -> CapabilityOperationType.failed;
+                case log -> CapabilityOperationType.log;
+                case success -> CapabilityOperationType.success;
+                default -> CapabilityOperationType.progress;
+            };
         CapabilityOperationEvent event = CapabilityOperationEvent.of(
-            switch (state.getType()) {
-                case error -> CapabilityOperationEvent.Type.failed;
-                case log -> CapabilityOperationEvent.Type.log;
-                case success -> CapabilityOperationEvent.Type.success;
-                default -> CapabilityOperationEvent.Type.progress;
-            },
+            type,
             capabilityId,
             version
         );
@@ -317,7 +325,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     private CapabilityOperationEvent successEvent(String capabilityId,
                                                   String version) {
         CapabilityOperationEvent event = CapabilityOperationEvent.of(
-            CapabilityOperationEvent.Type.success,
+            CapabilityOperationType.success,
             capabilityId,
             version
         );
@@ -399,11 +407,62 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
         }
 
         @Override
+        public Recorder recorder() {
+            return new Recorder() {
+                @Override
+                public <E> ActionRecorder<E> action(CharSequence action) {
+                    return newRecorder(action, null);
+                }
+            };
+        }
+
+        private <E> ActionRecorder<E> newRecorder(CharSequence action,
+                                                  String parentRecordId) {
+            ProgressActionRecorder<E> recorder = new ProgressActionRecorder<>(action, parentRecordId, progress);
+            recorder.start(Context.empty());
+            return recorder;
+        }
+
+        @Override
         public void log(Level level, String message, Object... args) {
             progress.emitNext(
                 ProgressState.log(level.name(), message, args),
                 Reactors.emitFailureHandler()
             );
+        }
+
+        private final class ProgressActionRecorder<E> extends AbstractActionRecorder<E> {
+
+            private ProgressActionRecorder(CharSequence action,
+                                           String parentRecordId,
+                                           Sinks.ManyWithUpstream<ProgressState<InstalledResource>> progress) {
+                super(action, parentRecordId);
+                this.progress = progress;
+            }
+
+            private final Sinks.ManyWithUpstream<ProgressState<InstalledResource>> progress;
+
+            @Override
+            protected void handle(ActionRecord record) {
+                String message = record.getAction() == null
+                    ? "operation"
+                    : String.valueOf(record.getAction());
+                progress.emitNext(
+                    ProgressState.progress(message, message, record),
+                    Reactors.emitFailureHandler()
+                );
+            }
+
+            @Override
+            public <T> ActionRecorder<T> child(CharSequence action) {
+                ProgressActionRecorder<T> child = new ProgressActionRecorder<>(action, record.getId(), progress);
+                child.start(Context.empty());
+                if (StringUtils.hasText(record.getTraceId())) {
+                    child.record.setTraceId(record.getTraceId());
+                    child.record.setSpanId(record.getSpanId());
+                }
+                return child;
+            }
         }
     }
 
