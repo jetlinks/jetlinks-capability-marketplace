@@ -1,5 +1,6 @@
 package org.jetlinks.marketplace.client;
 
+import org.jetlinks.marketplace.CapabilityInstallRequest;
 import org.jetlinks.marketplace.InstalledResource;
 import org.jetlinks.marketplace.ProgressState;
 import reactor.core.publisher.Flux;
@@ -20,9 +21,21 @@ public interface CapabilityResourceManager {
                                                    String version,
                                                    Map<String, Object> configuration);
 
+    default Flux<ProgressState<InstalledResource>> install(String capabilityId,
+                                                           String version,
+                                                           CapabilityInstallRequest request) {
+        return install(capabilityId, version, request == null ? Map.of() : request.getConfiguration());
+    }
+
     Flux<ProgressState<InstalledResource>> upgrade(String capabilityId,
-                                                     String targetVersion,
-                                                     Map<String, Object> configuration);
+                                                   String targetVersion,
+                                                   Map<String, Object> configuration);
+
+    default Flux<ProgressState<InstalledResource>> upgrade(String capabilityId,
+                                                           String targetVersion,
+                                                           CapabilityInstallRequest request) {
+        return upgrade(capabilityId, targetVersion, request == null ? Map.of() : request.getConfiguration());
+    }
 
     Mono<Boolean> isInstalled(String capabilityId);
 

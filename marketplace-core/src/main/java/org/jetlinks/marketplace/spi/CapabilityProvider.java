@@ -1,6 +1,7 @@
 package org.jetlinks.marketplace.spi;
 
 import org.jetlinks.core.monitor.Monitor;
+import org.jetlinks.marketplace.CapabilityInstallRequest;
 import org.jetlinks.marketplace.CapabilityPackage;
 import org.jetlinks.marketplace.InstalledCapability;
 import org.jetlinks.marketplace.InstalledResource;
@@ -59,5 +60,9 @@ public interface CapabilityProvider {
         Monitor monitor();
 
         Map<String,Object> configuration();
+
+        default CapabilityInstallRequest request() {
+            return CapabilityInstallRequest.ofConfiguration(configuration());
+        }
     }
 }
