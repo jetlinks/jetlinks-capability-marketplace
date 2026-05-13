@@ -26,7 +26,7 @@ public class CapabilityOperationEvent implements Serializable {
 
     private String operationId;
 
-    private CapabilityOperationType type;
+    private Type type;
 
     private String capabilityId;
 
@@ -48,7 +48,7 @@ public class CapabilityOperationEvent implements Serializable {
 
     private List<InstalledResource> resources;
 
-    public static CapabilityOperationEvent of(CapabilityOperationType type,
+    public static CapabilityOperationEvent of(Type type,
                                               String capabilityId,
                                               String version) {
         CapabilityOperationEvent event = new CapabilityOperationEvent();
@@ -58,6 +58,34 @@ public class CapabilityOperationEvent implements Serializable {
         event.setInstallKey(DEFAULT_INSTALL_KEY);
         event.setTimestamp(System.currentTimeMillis());
         return event;
+    }
+
+    public static CapabilityOperationEvent of(CapabilityOperationType type,
+                                              String capabilityId,
+                                              String version) {
+        return of(Type.of(type), capabilityId, version);
+    }
+
+    public void setType(Type type) {
+        this.type = type;
+    }
+
+    public void setType(CapabilityOperationType type) {
+        this.type = Type.of(type);
+    }
+
+    public enum Type {
+        download,
+        installing,
+        action,
+        progress,
+        log,
+        success,
+        failed;
+
+        static Type of(CapabilityOperationType type) {
+            return type == null ? null : Type.valueOf(type.name());
+        }
     }
 
 }

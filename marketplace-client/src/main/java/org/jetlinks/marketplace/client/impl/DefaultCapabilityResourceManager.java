@@ -217,7 +217,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
         progressStream.subscribeTo(
             reportOperationEvent(
                 operationContext,
-                CapabilityOperationEvent.of(CapabilityOperationType.download, capabilityId, version))
+                CapabilityOperationEvent.of(CapabilityOperationEvent.Type.download, capabilityId, version))
                 .then(client.download(capabilityId, version))
                 .switchIfEmpty(Mono.error(() -> new NotFoundException.NoStackTrace(
                     "message.capability.not_found",
@@ -230,7 +230,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                         Reactors.emitFailureHandler());
                     return reportOperationEvent(
                         operationContext,
-                        CapabilityOperationEvent.of(CapabilityOperationType.installing, capabilityId, pkg.getVersion())
+                        CapabilityOperationEvent.of(CapabilityOperationEvent.Type.installing, capabilityId, pkg.getVersion())
                     )
                         .then(savePackage(pkg, progressStream, request, installedResources))
                         .then(reportOperationEvent(
@@ -296,13 +296,13 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     private CapabilityOperationEvent progressEvent(String capabilityId,
                                                    String version,
                                                    ProgressState<InstalledResource> state) {
-        CapabilityOperationType type = state.getExtra() instanceof ActionRecord
-            ? CapabilityOperationType.action
+        CapabilityOperationEvent.Type type = state.getExtra() instanceof ActionRecord
+            ? CapabilityOperationEvent.Type.action
             : switch (state.getType()) {
-                case error -> CapabilityOperationType.failed;
-                case log -> CapabilityOperationType.log;
-                case success -> CapabilityOperationType.success;
-                default -> CapabilityOperationType.progress;
+                case error -> CapabilityOperationEvent.Type.failed;
+                case log -> CapabilityOperationEvent.Type.log;
+                case success -> CapabilityOperationEvent.Type.success;
+                default -> CapabilityOperationEvent.Type.progress;
             };
         CapabilityOperationEvent event = CapabilityOperationEvent.of(
             type,
@@ -325,7 +325,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     private CapabilityOperationEvent successEvent(String capabilityId,
                                                   String version) {
         CapabilityOperationEvent event = CapabilityOperationEvent.of(
-            CapabilityOperationType.success,
+            CapabilityOperationEvent.Type.success,
             capabilityId,
             version
         );

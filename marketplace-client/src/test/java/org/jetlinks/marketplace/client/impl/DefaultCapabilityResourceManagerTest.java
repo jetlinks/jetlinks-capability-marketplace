@@ -10,7 +10,6 @@ import org.jetlinks.marketplace.CapabilityInstallRequest;
 import org.jetlinks.marketplace.CapabilityInfo;
 import org.jetlinks.marketplace.CapabilityOperationContext;
 import org.jetlinks.marketplace.CapabilityOperationEvent;
-import org.jetlinks.marketplace.CapabilityOperationType;
 import org.jetlinks.marketplace.CapabilityPackage;
 import org.jetlinks.marketplace.InstalledResource;
 import org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity;
@@ -286,15 +285,15 @@ class DefaultCapabilityResourceManagerTest {
 
         assertEquals(1, operationIds.size());
         assertEquals(operationIds.get(0), providerOperationId.get());
-        EnumSet<CapabilityOperationType> types = events
+        EnumSet<CapabilityOperationEvent.Type> types = events
             .stream()
             .map(CapabilityOperationEvent::getType)
-            .collect(Collectors.toCollection(() -> EnumSet.noneOf(CapabilityOperationType.class)));
+            .collect(Collectors.toCollection(() -> EnumSet.noneOf(CapabilityOperationEvent.Type.class)));
 
-        assertTrue(types.contains(CapabilityOperationType.download));
-        assertTrue(types.contains(CapabilityOperationType.installing));
-        assertTrue(types.contains(CapabilityOperationType.progress));
-        assertTrue(types.contains(CapabilityOperationType.success));
+        assertTrue(types.contains(CapabilityOperationEvent.Type.download));
+        assertTrue(types.contains(CapabilityOperationEvent.Type.installing));
+        assertTrue(types.contains(CapabilityOperationEvent.Type.progress));
+        assertTrue(types.contains(CapabilityOperationEvent.Type.success));
     }
 
     @Test
@@ -369,7 +368,7 @@ class DefaultCapabilityResourceManagerTest {
         assertTrue(recorderEvents
                        .stream()
                        .map(CapabilityOperationEvent::getType)
-                       .allMatch(CapabilityOperationType.action::equals));
+                       .allMatch(CapabilityOperationEvent.Type.action::equals));
     }
 
     @Test
