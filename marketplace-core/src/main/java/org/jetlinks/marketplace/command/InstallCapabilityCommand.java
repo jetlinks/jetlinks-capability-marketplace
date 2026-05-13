@@ -1,6 +1,7 @@
 package org.jetlinks.marketplace.command;
 
 import org.jetlinks.core.command.AbstractCommand;
+import org.jetlinks.marketplace.CapabilityInstallRequest;
 import org.jetlinks.marketplace.InstalledResource;
 import org.jetlinks.marketplace.ProgressState;
 import reactor.core.publisher.Flux;
@@ -33,10 +34,29 @@ public class InstallCapabilityCommand extends AbstractCommand<Flux<ProgressState
 
     @SuppressWarnings("unchecked")
     public Map<String, Object> getConfiguration() {
+        CapabilityInstallRequest request = getOrNull("request", CapabilityInstallRequest.class);
+        if (request != null) {
+            return request.getConfiguration();
+        }
         return (Map<String, Object>) getOrNull("configuration", Map.class);
     }
 
     public InstallCapabilityCommand setConfiguration(Map<String, Object> configuration) {
+        CapabilityInstallRequest request = getOrNull("request", CapabilityInstallRequest.class);
+        if (request != null) {
+            request.setConfiguration(configuration);
+            with("request", request);
+        }
         return with("configuration", configuration);
+    }
+
+    public CapabilityInstallRequest getRequest() {
+        CapabilityInstallRequest request = getOrNull("request", CapabilityInstallRequest.class);
+        return request == null ? CapabilityInstallRequest.ofConfiguration(getConfiguration()) : request;
+    }
+
+    public InstallCapabilityCommand setRequest(CapabilityInstallRequest request) {
+        with("request", request);
+        return with("configuration", request == null ? null : request.getConfiguration());
     }
 }

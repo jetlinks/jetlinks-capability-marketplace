@@ -7,6 +7,7 @@ import org.hswebframework.web.authorization.annotation.Authorize;
 import org.hswebframework.web.authorization.annotation.QueryAction;
 import org.hswebframework.web.authorization.annotation.Resource;
 import org.hswebframework.web.authorization.annotation.ResourceAction;
+import org.jetlinks.marketplace.CapabilityInstallRequest;
 import org.jetlinks.marketplace.InstalledResource;
 import org.jetlinks.marketplace.ProgressState;
 import org.jetlinks.marketplace.client.CapabilityResourceManager;
@@ -19,7 +20,6 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/marketplace")
@@ -36,9 +36,10 @@ public class MarketplaceClientResourceController {
     @ResourceAction(id = "install", name = "安装")
     public Flux<ProgressState<InstalledResource>> install(@PathVariable String id,
                                                           @PathVariable String version,
-                                                          @RequestBody Mono<Map<String, Object>> configuration) {
-        return configuration
-            .flatMapMany(map -> resourceManager.install(id, version, map));
+                                                          @RequestBody(required = false) Mono<CapabilityInstallRequest> request) {
+        return request
+            .defaultIfEmpty(new CapabilityInstallRequest())
+            .flatMapMany(payload -> resourceManager.install(id, version, payload));
     }
 
     @PostMapping("/capabilities/{id}/{version}/_upgrade")
@@ -46,9 +47,10 @@ public class MarketplaceClientResourceController {
     @ResourceAction(id = "upgrade", name = "升级")
     public Flux<ProgressState<InstalledResource>> upgrade(@PathVariable String id,
                                                           @PathVariable String version,
-                                                          @RequestBody Mono<Map<String, Object>> configuration) {
-        return configuration
-            .flatMapMany(map -> resourceManager.upgrade(id, version, map));
+                                                          @RequestBody(required = false) Mono<CapabilityInstallRequest> request) {
+        return request
+            .defaultIfEmpty(new CapabilityInstallRequest())
+            .flatMapMany(payload -> resourceManager.upgrade(id, version, payload));
     }
 
     @PostMapping("/capabilities/{type}/installed")
