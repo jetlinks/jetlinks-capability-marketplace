@@ -8,6 +8,8 @@ import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.Map;
+
 @AllArgsConstructor
 public class CapabilityMarketplaceCommandSupport {
 
@@ -46,6 +48,16 @@ public class CapabilityMarketplaceCommandSupport {
     @CommandHandler
     public Flux<CapabilityInfo> checkUpdates(CheckCapabilityUpdatesCommand request) {
         return client.checkUpdates(request.getInstalled());
+    }
+
+    @CommandHandler
+    public Mono<Map<String, Object>> searchDeviceTemplates(SearchDeviceTemplatesCommand request) {
+        return client.searchDeviceTemplates(request.asRequest());
+    }
+
+    @CommandHandler
+    public Mono<Map<String, Object>> getDeviceTemplateDetail(GetDeviceTemplateDetailCommand request) {
+        return client.getDeviceTemplateDetail(request.getTemplateId(), request.getResourceId());
     }
 
     @CommandHandler

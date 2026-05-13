@@ -13,6 +13,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/marketplace")
@@ -34,6 +35,20 @@ public class MarketplaceClientController {
     @Operation(summary = "获取能力详情")
     public Mono<CapabilityInfo> getDetail(@PathVariable String id) {
         return client.getDetail(id);
+    }
+
+
+    @PostMapping("/device-templates/_search")
+    @Operation(summary = "搜索设备库模板")
+    public Mono<Map<String, Object>> searchDeviceTemplates(@RequestBody Map<String, Object> request) {
+        return client.searchDeviceTemplates(request);
+    }
+
+    @GetMapping("/device-templates/{id}")
+    @Operation(summary = "获取设备库模板详情")
+    public Mono<Map<String, Object>> getDeviceTemplateDetail(@PathVariable String id,
+                                                             @RequestParam(required = false) String resourceId) {
+        return client.getDeviceTemplateDetail(id, resourceId);
     }
 
     @GetMapping("/capabilities/{id}/availability")
