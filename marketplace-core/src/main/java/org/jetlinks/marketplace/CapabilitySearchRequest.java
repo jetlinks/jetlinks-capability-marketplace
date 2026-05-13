@@ -23,6 +23,7 @@ public class CapabilitySearchRequest implements Serializable {
 
     private String keyword;
     private String type;
+    private String domain;
 
     private List<String> tagClassifiers;
     private List<String> tags;
