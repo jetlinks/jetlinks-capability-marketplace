@@ -32,6 +32,7 @@ public class CapabilityInfo implements Serializable {
     private String document;
     private String author;
     private String icon;
+    private String domain;
     private List<CapabilityTagInfo> tags;
     private boolean available = true;
     private CapabilityUseCondition useCondition;
