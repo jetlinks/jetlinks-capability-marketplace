@@ -60,18 +60,8 @@ public class CapabilityOperationEvent implements Serializable {
         return event;
     }
 
-    public static CapabilityOperationEvent of(CapabilityOperationType type,
-                                              String capabilityId,
-                                              String version) {
-        return of(Type.of(type), capabilityId, version);
-    }
-
     public void setType(Type type) {
         this.type = type;
-    }
-
-    public void setType(CapabilityOperationType type) {
-        this.type = Type.of(type);
     }
 
     public enum Type {
@@ -82,10 +72,6 @@ public class CapabilityOperationEvent implements Serializable {
         log,
         success,
         failed;
-
-        static Type of(CapabilityOperationType type) {
-            return type == null ? null : Type.valueOf(type.name());
-        }
     }
 
 }

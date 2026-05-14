@@ -40,7 +40,7 @@ class CapabilityMarketplaceCommandSupportTest {
         capabilityPackage.setVersion("1.0.0");
 
         CapabilityOperationEvent operationEvent = CapabilityOperationEvent.of(
-            CapabilityOperationType.installing,
+            CapabilityOperationEvent.Type.installing,
             "cap-1",
             "1.0.0");
 

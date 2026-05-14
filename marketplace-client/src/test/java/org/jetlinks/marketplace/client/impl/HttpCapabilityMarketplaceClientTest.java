@@ -4,7 +4,6 @@ import org.jetlinks.marketplace.CapabilityAvailability;
 import org.jetlinks.marketplace.CapabilityInfo;
 import org.jetlinks.marketplace.CapabilityOperationContext;
 import org.jetlinks.marketplace.CapabilityOperationEvent;
-import org.jetlinks.marketplace.CapabilityOperationType;
 import org.jetlinks.marketplace.CapabilityPackage;
 import org.jetlinks.marketplace.CapabilitySearchRequest;
 import org.jetlinks.marketplace.CapabilityTag;
@@ -114,7 +113,7 @@ class HttpCapabilityMarketplaceClientTest {
         });
 
         CapabilityOperationEvent event = CapabilityOperationEvent.of(
-            CapabilityOperationType.installing,
+            CapabilityOperationEvent.Type.installing,
             "cap-1",
             "1.0.0");
 
