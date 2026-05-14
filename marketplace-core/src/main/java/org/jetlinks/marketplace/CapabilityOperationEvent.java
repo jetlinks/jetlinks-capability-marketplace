@@ -60,12 +60,18 @@ public class CapabilityOperationEvent implements Serializable {
         return event;
     }
 
+    public void setType(Type type) {
+        this.type = type;
+    }
+
     public enum Type {
         download,
         installing,
+        action,
         progress,
         log,
         success,
-        failed
+        failed;
     }
+
 }
