@@ -32,6 +32,7 @@ import reactor.core.publisher.Sinks;
 import reactor.util.context.Context;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -74,7 +75,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     public Flux<ProgressState<InstalledResource>> install(String capabilityId,
                                                           String version,
                                                           CapabilityInstallRequest request) {
-        return install0(capabilityId, version, normalizeRequest(request), List.of());
+        return install0(capabilityId, version, normalizeRequest(request), List.of(), Set.of());
     }
 
     @Transactional(rollbackFor = Throwable.class)
@@ -82,34 +83,45 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                                   Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
                                   CapabilityInstallRequest request,
                                   List<CapabilityResourceInstallEntity> installedResources) {
-        // todo 安装依赖.
-        List<CapabilityDependency> dependencies = pkg.getInfo().getDependencies();
+        Set<String> installingStack = new LinkedHashSet<>();
+        if (pkg != null && pkg.getInfo() != null && StringUtils.hasText(pkg.getInfo().getId())) {
+            installingStack.add(pkg.getInfo().getId());
+        }
+        return savePackage(pkg, upstream, request, installedResources, installingStack);
+    }
 
+    @Transactional(rollbackFor = Throwable.class)
+    public Mono<Void> savePackage(CapabilityPackage pkg,
+                                  Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
+                                  CapabilityInstallRequest request,
+                                  List<CapabilityResourceInstallEntity> installedResources,
+                                  Set<String> installingStack) {
         CapabilityProvider provider = CapabilityProviders.getOrThrow(pkg.getInfo().getProvider());
 
-        return provider
-            .install(new CapabilityContextImpl(pkg, request, installedResources, upstream))
-            .doOnNext(resource -> upstream
-                .emitNext(
-                    ProgressState.progress("message.capability_installed_resource", "安装成功", resource),
-                    Reactors.emitFailureHandler()))
-            .collectList()
-            .flatMap(resources -> {
+        return installDependencies(pkg, upstream, installingStack)
+            .then(Mono.defer(() -> provider
+                .install(new CapabilityContextImpl(pkg, request, installedResources, upstream))
+                .doOnNext(resource -> upstream
+                    .emitNext(
+                        ProgressState.progress("message.capability_installed_resource", "安装成功", resource),
+                        Reactors.emitFailureHandler()))
+                .collectList()
+                .flatMap(resources -> {
 
-                // 删除当前升级目标范围内的旧绑定信息.
-                Mono<Void> task = deleteInstalledResources(installedResources);
+                    // 删除当前升级目标范围内的旧绑定信息.
+                    Mono<Void> task = deleteInstalledResources(installedResources);
 
-                // 创建绑定信息
-                if (CollectionUtils.isNotEmpty(resources)) {
-                    task = task.then(
-                        resourceRepository.save(
-                            Collections2.transform(resources, res -> CapabilityResourceInstallEntity.from(res, pkg))
-                        ).then()
-                    );
-                }
+                    // 创建绑定信息
+                    if (CollectionUtils.isNotEmpty(resources)) {
+                        task = task.then(
+                            resourceRepository.save(
+                                Collections2.transform(resources, res -> CapabilityResourceInstallEntity.from(res, pkg))
+                            ).then()
+                        );
+                    }
 
-                return task.then();
-            });
+                    return task.then();
+                })));
     }
 
 
@@ -128,7 +140,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                                                           CapabilityInstallRequest request) {
         CapabilityInstallRequest actual = normalizeRequest(request);
         return resolveUpgradeTargets(capabilityId, actual)
-            .flatMapMany(resources -> install0(capabilityId, targetVersion, actual, resources));
+            .flatMapMany(resources -> install0(capabilityId, targetVersion, actual, resources, Set.of()));
     }
 
     @Override
@@ -197,9 +209,24 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                                                            String version,
                                                            CapabilityInstallRequest request,
                                                            List<CapabilityResourceInstallEntity> installedResources) {
+        return install0(capabilityId, version, request, installedResources, Set.of());
+    }
+
+    private Flux<ProgressState<InstalledResource>> install0(String capabilityId,
+                                                            String version,
+                                                            CapabilityInstallRequest request,
+                                                            List<CapabilityResourceInstallEntity> installedResources,
+                                                            Set<String> installingStack) {
+        if (installingStack.contains(capabilityId)) {
+            return Flux.just(ProgressState.error(
+                new ValidationException.NoStackTrace("error.capability_dependency_cycle_detected")));
+        }
+        Set<String> nextInstallingStack = new LinkedHashSet<>(installingStack);
+        nextInstallingStack.add(capabilityId);
+
         return CapabilityOperationContext
             .currentOrCreate()
-            .flatMapMany(operationContext -> install0(capabilityId, version, request, installedResources, operationContext)
+            .flatMapMany(operationContext -> install0(capabilityId, version, request, installedResources, operationContext, nextInstallingStack)
                 .contextWrite(CapabilityOperationContext.makeCurrent(operationContext)));
     }
 
@@ -208,6 +235,25 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                                                             CapabilityInstallRequest request,
                                                             List<CapabilityResourceInstallEntity> installedResources,
                                                             CapabilityOperationContext operationContext) {
+        return install0(capabilityId, version, request, installedResources, operationContext, Set.of());
+    }
+
+    private Flux<ProgressState<InstalledResource>> install0(String capabilityId,
+                                                            String version,
+                                                            CapabilityInstallRequest request,
+                                                            List<CapabilityResourceInstallEntity> installedResources,
+                                                            CapabilityOperationContext operationContext,
+                                                            Set<String> installingStack) {
+        return doInstall0(capabilityId, version, request, installedResources, operationContext, installingStack)
+            .contextWrite(CapabilityOperationContext.makeCurrent(operationContext));
+    }
+
+    private Flux<ProgressState<InstalledResource>> doInstall0(String capabilityId,
+                                                              String version,
+                                                              CapabilityInstallRequest request,
+                                                              List<CapabilityResourceInstallEntity> installedResources,
+                                                              CapabilityOperationContext operationContext,
+                                                              Set<String> installingStack) {
         Sinks.ManyWithUpstream<ProgressState<InstalledResource>>
             progressStream = Sinks
             .unsafe()
@@ -232,7 +278,7 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                         operationContext,
                         CapabilityOperationEvent.of(CapabilityOperationEvent.Type.installing, capabilityId, pkg.getVersion())
                     )
-                        .then(savePackage(pkg, progressStream, request, installedResources))
+                        .then(savePackage(pkg, progressStream, request, installedResources, installingStack))
                         .then(reportOperationEvent(
                             operationContext,
                             successEvent(capabilityId, pkg.getVersion())));
@@ -257,6 +303,123 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
 
     private CapabilityInstallRequest normalizeRequest(CapabilityInstallRequest request) {
         return request == null ? new CapabilityInstallRequest() : request;
+    }
+
+    private Mono<Void> installDependencies(CapabilityPackage pkg,
+                                           Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
+                                           Set<String> installingStack) {
+        CapabilityInfo info = pkg.getInfo();
+        List<CapabilityDependency> dependencies = info == null ? List.of() : info.getDependencies();
+        if (CollectionUtils.isEmpty(dependencies)) {
+            return Mono.empty();
+        }
+        return Flux
+            .fromIterable(dependencies)
+            .concatMap(dependency -> installDependency(dependency, upstream, installingStack))
+            .then();
+    }
+
+    private Mono<Void> installDependency(CapabilityDependency dependency,
+                                         Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
+                                         Set<String> installingStack) {
+        if (dependency == null || !StringUtils.hasText(dependency.getCapabilityId())) {
+            return Mono.error(new ValidationException.NoStackTrace("error.capability_dependency_invalid"));
+        }
+        String dependencyId = dependency.getCapabilityId();
+
+        return loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext.capability(dependencyId))
+            .collectList()
+            .flatMap(installedResources -> {
+                if (isDependencySatisfied(dependency, installedResources)) {
+                    upstream.emitNext(
+                        ProgressState.progress(
+                            "message.capability_dependency_skip",
+                            "依赖能力已安装,跳过"),
+                        Reactors.emitFailureHandler());
+                    return Mono.empty();
+                }
+                if (installingStack.contains(dependencyId)) {
+                    return Mono.error(new ValidationException.NoStackTrace("error.capability_dependency_cycle_detected"));
+                }
+                return resolveDependencyVersion(dependency)
+                    .flatMap(version -> installDependencyVersion(
+                        dependencyId,
+                        version.getVersion(),
+                        CollectionUtils.isNotEmpty(installedResources),
+                        upstream,
+                        installingStack));
+            });
+    }
+
+    private boolean isDependencySatisfied(CapabilityDependency dependency,
+                                          List<CapabilityResourceInstallEntity> installedResources) {
+        if (CollectionUtils.isEmpty(installedResources)) {
+            return false;
+        }
+        if (!StringUtils.hasText(dependency.getVersionRange())) {
+            return true;
+        }
+        return getMaxInstalledVersion(installedResources)
+            .filter(version -> matchesDependencyVersionRange(version, dependency.getVersionRange()))
+            .isPresent();
+    }
+
+    private java.util.Optional<String> getMaxInstalledVersion(List<CapabilityResourceInstallEntity> installedResources) {
+        return installedResources
+            .stream()
+            .map(CapabilityResourceInstallEntity::getVersion)
+            .filter(StringUtils::hasText)
+            .max(Version::compare);
+    }
+
+    private Mono<CapabilityVersion> resolveDependencyVersion(CapabilityDependency dependency) {
+        return client
+            .getVersions(dependency.getCapabilityId())
+            .filter(CapabilityVersion::isAvailable)
+            .filter(version -> StringUtils.hasText(version.getVersion()))
+            .filter(version -> matchesDependencyVersionRange(version.getVersion(), dependency.getVersionRange()))
+            .sort(Comparator.reverseOrder())
+            .next()
+            .switchIfEmpty(Mono.error(
+                new ValidationException.NoStackTrace("error.capability_dependency_version_not_found")));
+    }
+
+    private Mono<Void> installDependencyVersion(String capabilityId,
+                                                String version,
+                                                boolean upgrade,
+                                                Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
+                                                Set<String> installingStack) {
+        //TODO 2026/5/15 从安装包来、从请求来
+        CapabilityInstallRequest request = new CapabilityInstallRequest();
+        Flux<ProgressState<InstalledResource>> progress = upgrade
+            ? resolveUpgradeTargets(capabilityId, request)
+            .flatMapMany(resources -> install0(capabilityId, version, request, resources, installingStack))
+            : install0(capabilityId, version, request, List.of(), installingStack);
+
+        upstream.emitNext(
+            ProgressState.progress(
+                upgrade ? "message.capability_dependency_upgrade" : "message.capability_dependency_install",
+                upgrade ? "正在升级依赖能力" : "正在安装依赖能力"),
+            Reactors.emitFailureHandler());
+
+        return progress
+            .concatMap(state -> {
+                upstream.emitNext(state, Reactors.emitFailureHandler());
+                if (state.getType() == ProgressState.Type.error) {
+                    return Mono.error(new ValidationException.NoStackTrace(state.getMessage()));
+                }
+                return Mono.empty();
+            })
+            .then();
+    }
+
+    private boolean matchesDependencyVersionRange(String version,
+                                                  String versionRange) {
+        try {
+            return CapabilityVersionRange.matches(version, versionRange);
+        } catch (IllegalArgumentException e) {
+            throw new ValidationException.NoStackTrace("error.capability_dependency_version_range_invalid");
+        }
     }
 
     private Mono<List<CapabilityResourceInstallEntity>> resolveUpgradeTargets(String capabilityId,
