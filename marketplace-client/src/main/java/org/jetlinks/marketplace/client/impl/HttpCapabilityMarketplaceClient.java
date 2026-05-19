@@ -21,6 +21,7 @@ import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ResponseStatusException;
@@ -199,6 +200,15 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
                 }
                 return response.bodyToMono(type);
             }));
+    }
+
+    private <T> Mono<T> exchangeToMono(WebClient.RequestHeadersSpec<?> request, ParameterizedTypeReference<T> type) {
+        return request.exchangeToMono(response -> {
+            if (response.statusCode().isError()) {
+                return createResponseException(response).flatMap(Mono::error);
+            }
+            return response.bodyToMono(type);
+        });
     }
 
     private <T> Flux<T> exchangeToFlux(WebClient.RequestHeadersSpec<?> request, Class<T> type) {
