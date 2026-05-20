@@ -31,13 +31,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.util.context.Context;
 
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 @Slf4j
 public class DefaultCapabilityResourceManager implements CapabilityResourceManager {
@@ -99,8 +93,8 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
         CapabilityProvider provider = CapabilityProviders.getOrThrow(pkg.getInfo().getProvider());
 
         return installDependencies(pkg, upstream, installingStack)
-            .then(Mono.defer(() -> provider
-                .install(new CapabilityContextImpl(pkg, request, installedResources, upstream))
+            .flatMap(dependencyResources -> Mono.defer(() -> provider
+                .install(new CapabilityContextImpl(pkg, request, installedResources, dependencyResources, upstream))
                 .doOnNext(resource -> upstream
                     .emitNext(
                         ProgressState.progress("message.capability_installed_resource", "安装成功", resource),
@@ -305,49 +299,51 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
         return request == null ? new CapabilityInstallRequest() : request;
     }
 
-    private Mono<Void> installDependencies(CapabilityPackage pkg,
-                                           Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
-                                           Set<String> installingStack) {
+    private Mono<List<CapabilityResourceInstallEntity>> installDependencies(CapabilityPackage pkg,
+                                                                            Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
+                                                                            Set<String> installingStack) {
         CapabilityInfo info = pkg.getInfo();
         List<CapabilityDependency> dependencies = info == null ? List.of() : info.getDependencies();
         if (CollectionUtils.isEmpty(dependencies)) {
-            return Mono.empty();
+            return Mono.just(Collections.emptyList());
         }
         return Flux
             .fromIterable(dependencies)
             .concatMap(dependency -> installDependency(dependency, upstream, installingStack))
-            .then();
+            .collectList();
     }
 
-    private Mono<Void> installDependency(CapabilityDependency dependency,
-                                         Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
-                                         Set<String> installingStack) {
+    private Flux<CapabilityResourceInstallEntity> installDependency(CapabilityDependency dependency,
+                                                                    Sinks.ManyWithUpstream<ProgressState<InstalledResource>> upstream,
+                                                                    Set<String> installingStack) {
         if (dependency == null || !StringUtils.hasText(dependency.getCapabilityId())) {
-            return Mono.error(new ValidationException.NoStackTrace("error.capability_dependency_invalid"));
+            return Flux.error(new ValidationException.NoStackTrace("error.capability_dependency_invalid"));
         }
         String dependencyId = dependency.getCapabilityId();
 
         return loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext.capability(dependencyId))
             .collectList()
-            .flatMap(installedResources -> {
+            .flatMapMany(installedResources -> {
                 if (isDependencySatisfied(dependency, installedResources)) {
                     upstream.emitNext(
                         ProgressState.progress(
                             "message.capability_dependency_skip",
                             "依赖能力已安装,跳过"),
                         Reactors.emitFailureHandler());
-                    return Mono.empty();
+                    return Flux.fromIterable(installedResources);
                 }
                 if (installingStack.contains(dependencyId)) {
-                    return Mono.error(new ValidationException.NoStackTrace("error.capability_dependency_cycle_detected"));
+                    return Flux.error(new ValidationException.NoStackTrace("error.capability_dependency_cycle_detected"));
                 }
                 return resolveDependencyVersion(dependency)
-                    .flatMap(version -> installDependencyVersion(
+                    .flatMapMany(version -> installDependencyVersion(
                         dependencyId,
                         version.getVersion(),
                         CollectionUtils.isNotEmpty(installedResources),
                         upstream,
-                        installingStack));
+                        installingStack)
+                        .thenMany(Flux.defer(() -> loadInstalledResourceEntities(
+                            CapabilityInstalledResourceFilterContext.capability(dependencyId)))));
             });
     }
 
@@ -528,13 +524,21 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
         CapabilityPackage pkg,
         CapabilityInstallRequest request,
         List<CapabilityResourceInstallEntity> installedResources,
+        List<CapabilityResourceInstallEntity> dependencyResources,
         Sinks.ManyWithUpstream<ProgressState<InstalledResource>> progress)
         implements CapabilityProvider.CapabilityContext, Monitor, Logger {
 
         @Override
         public Flux<InstalledResource> loadInstallResources() {
             return Flux
-                .fromIterable(installedResources == null ? List.<CapabilityResourceInstallEntity>of() : installedResources)
+                .fromIterable(installedResources == null ? CollectionUtils.emptyCollection() : installedResources)
+                .map(CapabilityResourceInstallEntity::toResource);
+        }
+
+        @Override
+        public Flux<InstalledResource> loadDependencyResources() {
+            return Flux
+                .fromIterable(dependencyResources == null ? CollectionUtils.emptyCollection() : dependencyResources)
                 .map(CapabilityResourceInstallEntity::toResource);
         }
 

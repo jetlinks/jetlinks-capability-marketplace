@@ -48,6 +48,26 @@ public interface CapabilityProvider {
         Flux<InstalledResource> loadInstallResources();
 
         /**
+         * 加载当前安装包依赖能力的已安装资源.
+         *
+         * @return InstalledResource
+         */
+        default Flux<InstalledResource> loadDependencyResources() {
+            return Flux.empty();
+        }
+
+        /**
+         * 按资源类型加载当前安装包依赖能力的已安装资源.
+         *
+         * @param type 资源类型
+         * @return InstalledResource
+         */
+        default Flux<InstalledResource> loadDependencyResources(String type) {
+            return loadDependencyResources()
+                .filter(resource -> type.equals(resource.getType()));
+        }
+
+        /**
          * 获取安装包
          *
          * @return 安装包
