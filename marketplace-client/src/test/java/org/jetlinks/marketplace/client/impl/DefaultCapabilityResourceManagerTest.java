@@ -518,6 +518,47 @@ class DefaultCapabilityResourceManagerTest {
 
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
+    void shouldInstallDependencyWithBlankVersionRange() {
+        CapabilityMarketplaceClient client = mock(CapabilityMarketplaceClient.class);
+        ReactiveRepository<CapabilityResourceInstallEntity, String> repository = mock(ReactiveRepository.class);
+        ReactiveQuery<CapabilityResourceInstallEntity> dependencyQuery = mock(ReactiveQuery.class);
+        ReactiveQuery<CapabilityResourceInstallEntity> installedDependencyQuery = mock(ReactiveQuery.class);
+        List<String> installedOrder = new ArrayList<>();
+        CapabilityResourceInstallEntity installedDependency =
+            installEntity("binding-dep-installed", "dep-cap", "tool", "dep-cap-resource", "dep-cap-data");
+        installedDependency.setVersion("2.0.0");
+
+        when(client.download("main-cap", "1.0.0"))
+            .thenReturn(Mono.just(packageFor("main-cap", "1.0.0", List.of(dependency("dep-cap", "  ")))));
+        when(client.getVersions("dep-cap"))
+            .thenReturn(Flux.just(version("1.0.0"), version("2.0.0")));
+        when(client.download("dep-cap", "2.0.0")).thenReturn(Mono.just(packageFor("dep-cap", "2.0.0")));
+        when(client.reportOperationEvent(any())).thenReturn(Mono.empty());
+        when(repository.createQuery()).thenReturn(dependencyQuery, installedDependencyQuery);
+        when(dependencyQuery.fetch()).thenReturn(Flux.empty());
+        when(installedDependencyQuery.fetch()).thenReturn(Flux.just(installedDependency));
+        when(repository.save(any(Collection.class))).thenReturn(Mono.just(mock(SaveResult.class)));
+
+        CapabilityProviders.register(provider(context -> {
+            installedOrder.add(context.pkg().getInfo().getId());
+            String capabilityId = context.pkg().getInfo().getId();
+            return Flux.just(resource("tool", capabilityId + "-resource", capabilityId + "-data"));
+        }));
+
+        DefaultCapabilityResourceManager manager = new DefaultCapabilityResourceManager(client, repository);
+
+        List<ProgressState<InstalledResource>> states = manager
+            .install("main-cap", "1.0.0", Map.of())
+            .collectList()
+            .block(Duration.ofSeconds(5));
+
+        assertEquals(List.of("dep-cap", "main-cap"), installedOrder);
+        assertFalse(states.stream().anyMatch(state -> state.getType() == ProgressState.Type.error));
+        verify(client).download("dep-cap", "2.0.0");
+    }
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
     void shouldSkipInstalledDependencyWhenVersionMatchesRange() {
         CapabilityMarketplaceClient client = mock(CapabilityMarketplaceClient.class);
         ReactiveRepository<CapabilityResourceInstallEntity, String> repository = mock(ReactiveRepository.class);
