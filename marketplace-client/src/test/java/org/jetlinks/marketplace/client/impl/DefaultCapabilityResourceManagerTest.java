@@ -461,7 +461,11 @@ class DefaultCapabilityResourceManagerTest {
         CapabilityMarketplaceClient client = mock(CapabilityMarketplaceClient.class);
         ReactiveRepository<CapabilityResourceInstallEntity, String> repository = mock(ReactiveRepository.class);
         ReactiveQuery<CapabilityResourceInstallEntity> dependencyQuery = mock(ReactiveQuery.class);
+        ReactiveQuery<CapabilityResourceInstallEntity> installedDependencyQuery = mock(ReactiveQuery.class);
         List<String> installedOrder = new ArrayList<>();
+        CapabilityResourceInstallEntity installedDependency =
+            installEntity("binding-dep-installed", "dep-cap", "tool", "dep-cap-resource", "dep-cap-data");
+        installedDependency.setVersion("1.2.0");
 
         when(client.download("main-cap", "1.0.0"))
             .thenReturn(Mono.just(packageFor("main-cap", "1.0.0", List.of(dependency("dep-cap", ">=1.0.0,<2.0.0")))));
@@ -469,15 +473,26 @@ class DefaultCapabilityResourceManagerTest {
             .thenReturn(Flux.just(version("1.0.0"), version("1.2.0"), version("2.0.0")));
         when(client.download("dep-cap", "1.2.0")).thenReturn(Mono.just(packageFor("dep-cap", "1.2.0")));
         when(client.reportOperationEvent(any())).thenReturn(Mono.empty());
-        when(repository.createQuery()).thenReturn(dependencyQuery);
+        when(repository.createQuery()).thenReturn(dependencyQuery, installedDependencyQuery);
         when(dependencyQuery.fetch()).thenReturn(Flux.empty());
+        when(installedDependencyQuery.fetch()).thenReturn(Flux.just(installedDependency));
         when(repository.save(any(Collection.class))).thenReturn(Mono.just(mock(SaveResult.class)));
 
-        CapabilityProviders.register(provider(context -> {
-            installedOrder.add(context.pkg().getInfo().getId());
-            String capabilityId = context.pkg().getInfo().getId();
-            return Flux.just(resource("tool", capabilityId + "-resource", capabilityId + "-data"));
-        }));
+        CapabilityProviders.register(provider(context -> context
+            .loadDependencyResources("tool")
+            .collectList()
+            .flatMapMany(dependencyResources -> {
+                installedOrder.add(context.pkg().getInfo().getId());
+                String capabilityId = context.pkg().getInfo().getId();
+                if ("dep-cap".equals(capabilityId)) {
+                    assertEquals(List.of(), dependencyResources);
+                }
+                if ("main-cap".equals(capabilityId)) {
+                    assertEquals(List.of("dep-cap-data"),
+                                 dependencyResources.stream().map(InstalledResource::getDataId).toList());
+                }
+                return Flux.just(resource("tool", capabilityId + "-resource", capabilityId + "-data"));
+            })));
 
         DefaultCapabilityResourceManager manager = new DefaultCapabilityResourceManager(client, repository);
 
