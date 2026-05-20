@@ -342,7 +342,8 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                         CollectionUtils.isNotEmpty(installedResources),
                         upstream,
                         installingStack)
-                        .thenMany(loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext.capability(dependencyId))));
+                        .thenMany(Flux.defer(() -> loadInstalledResourceEntities(
+                            CapabilityInstalledResourceFilterContext.capability(dependencyId)))));
             });
     }
 

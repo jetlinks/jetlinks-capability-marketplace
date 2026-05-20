@@ -761,11 +761,19 @@ class DefaultCapabilityResourceManagerTest {
         ReactiveQuery<CapabilityResourceInstallEntity> dependencyUpgradeQuery = mock(ReactiveQuery.class);
         ReactiveQuery<CapabilityResourceInstallEntity> nestedDependencyQuery = mock(ReactiveQuery.class);
         ReactiveQuery<CapabilityResourceInstallEntity> stackDependencyQuery = mock(ReactiveQuery.class);
+        ReactiveQuery<CapabilityResourceInstallEntity> installedNestedDependencyQuery = mock(ReactiveQuery.class);
+        ReactiveQuery<CapabilityResourceInstallEntity> installedDependencyQuery = mock(ReactiveQuery.class);
         List<String> installedOrder = new ArrayList<>();
 
         CapabilityResourceInstallEntity installedDependency =
             installEntity("binding-dep", "dep-cap", "tool", "dep-old", "dep-data");
         installedDependency.setVersion("1.0.0");
+        CapabilityResourceInstallEntity upgradedDependency =
+            installEntity("binding-dep-upgraded", "dep-cap", "tool", "dep-cap-resource", "dep-cap-data");
+        upgradedDependency.setVersion("2.0.0");
+        CapabilityResourceInstallEntity installedNestedDependency =
+            installEntity("binding-nested", "nested-cap", "tool", "nested-cap-resource", "nested-cap-data");
+        installedNestedDependency.setVersion("1.0.0");
 
         when(client.download("main-cap", "1.0.0"))
             .thenReturn(Mono.just(packageFor("main-cap", "1.0.0", List.of(dependency("dep-cap", ">=2.0.0")))));
@@ -777,11 +785,18 @@ class DefaultCapabilityResourceManagerTest {
             .thenReturn(Mono.just(packageFor("nested-cap", "1.0.0", List.of(dependency("dep-cap", ">=1.0.0")))));
         when(client.reportOperationEvent(any())).thenReturn(Mono.empty());
         when(repository.createQuery())
-            .thenReturn(dependencyCheckQuery, dependencyUpgradeQuery, nestedDependencyQuery, stackDependencyQuery);
+            .thenReturn(dependencyCheckQuery,
+                        dependencyUpgradeQuery,
+                        nestedDependencyQuery,
+                        stackDependencyQuery,
+                        installedNestedDependencyQuery,
+                        installedDependencyQuery);
         when(dependencyCheckQuery.fetch()).thenReturn(Flux.just(installedDependency));
         when(dependencyUpgradeQuery.fetch()).thenReturn(Flux.just(installedDependency));
         when(nestedDependencyQuery.fetch()).thenReturn(Flux.empty());
         when(stackDependencyQuery.fetch()).thenReturn(Flux.just(installedDependency));
+        when(installedNestedDependencyQuery.fetch()).thenReturn(Flux.just(installedNestedDependency));
+        when(installedDependencyQuery.fetch()).thenReturn(Flux.just(upgradedDependency));
         when(repository.deleteById(any(Collection.class))).thenReturn(Mono.just(1));
         when(repository.save(any(Collection.class))).thenReturn(Mono.just(mock(SaveResult.class)));
 
