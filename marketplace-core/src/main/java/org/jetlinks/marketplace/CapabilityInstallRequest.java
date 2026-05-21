@@ -13,6 +13,8 @@ public class CapabilityInstallRequest implements Serializable {
 
     private Map<String, Object> configuration;
 
+    private Operator operator;
+
     private UpgradeOptions upgrade;
 
     public Map<String, Object> getConfiguration() {
@@ -31,10 +33,25 @@ public class CapabilityInstallRequest implements Serializable {
         return upgrade != null;
     }
 
+    public Operator getEffectiveOperator() {
+        return operator == null ? new Operator() : operator;
+    }
+
     public static CapabilityInstallRequest ofConfiguration(Map<String, Object> configuration) {
         CapabilityInstallRequest request = new CapabilityInstallRequest();
         request.setConfiguration(configuration);
         return request;
+    }
+
+    @Getter
+    @Setter
+    public static class Operator implements Serializable {
+
+        private String id;
+
+        private String name;
+
+        private String username;
     }
 
     @Getter

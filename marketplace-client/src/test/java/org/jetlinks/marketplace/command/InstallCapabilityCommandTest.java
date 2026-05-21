@@ -31,6 +31,11 @@ class InstallCapabilityCommandTest {
         CapabilityInstallRequest.UpgradeOptions upgrade = new CapabilityInstallRequest.UpgradeOptions();
         upgrade.setTargetDataIds(List.of("skill-1"));
         request.setUpgrade(upgrade);
+        CapabilityInstallRequest.Operator operator = new CapabilityInstallRequest.Operator();
+        operator.setId("user-1");
+        operator.setName("用户一");
+        operator.setUsername("user");
+        request.setOperator(operator);
 
         InstallCapabilityCommand command = new InstallCapabilityCommand()
             .setCapabilityId("cap-2")
@@ -38,6 +43,7 @@ class InstallCapabilityCommandTest {
             .setRequest(request);
 
         assertEquals("value", command.getConfiguration().get("key"));
+        assertEquals("user-1", command.getRequest().getEffectiveOperator().getId());
         assertTrue(command.getRequest().hasUpgradeOptions());
         assertEquals(List.of("skill-1"), command.getRequest().getEffectiveUpgrade().getTargetDataIds());
 
