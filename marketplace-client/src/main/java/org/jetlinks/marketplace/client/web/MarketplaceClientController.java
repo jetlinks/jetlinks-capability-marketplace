@@ -48,6 +48,12 @@ public class MarketplaceClientController {
         return client.getVersions(id);
     }
 
+    @GetMapping("/capabilities/{id}/versions/{version}/package")
+    @Operation(summary = "下载能力包")
+    public Mono<CapabilityPackage> download(@PathVariable String id, @PathVariable String version) {
+        return client.download(id, version);
+    }
+
     @PostMapping("/capabilities/_check-updates")
     @Operation(summary = "检查更新")
     public Flux<CapabilityInfo> checkUpdates(@RequestBody List<InstalledCapability> installed) {

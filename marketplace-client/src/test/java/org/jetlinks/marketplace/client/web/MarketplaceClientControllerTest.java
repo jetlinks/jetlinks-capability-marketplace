@@ -33,6 +33,9 @@ class MarketplaceClientControllerTest {
         CapabilityVersion version = new CapabilityVersion();
         version.setVersion("1.0.0");
 
+        CapabilityPackage capabilityPackage = new CapabilityPackage();
+        capabilityPackage.setVersion("1.0.0");
+
         CapabilityTagClassifier classifier = new CapabilityTagClassifier();
         classifier.setId("classifier-1");
 
@@ -46,6 +49,7 @@ class MarketplaceClientControllerTest {
         when(client.getDetail("cap-1")).thenReturn(Mono.just(info));
         when(client.checkAvailability("cap-1")).thenReturn(Mono.just(availability));
         when(client.getVersions("cap-1")).thenReturn(Flux.just(version));
+        when(client.download("cap-1", "1.0.0")).thenReturn(Mono.just(capabilityPackage));
         when(client.checkUpdates(List.of(installedCapability))).thenReturn(Flux.just(info));
         when(client.getTagClassifiers("plugin")).thenReturn(Flux.just(classifier));
         when(client.getTagClassifier("classifier-1")).thenReturn(Mono.just(classifier));
@@ -55,6 +59,7 @@ class MarketplaceClientControllerTest {
         assertEquals(info, controller.getDetail("cap-1").block());
         assertEquals(availability, controller.checkAvailability("cap-1").block());
         assertEquals(List.of(version), controller.getVersions("cap-1").collectList().block());
+        assertEquals(capabilityPackage, controller.download("cap-1", "1.0.0").block());
         assertEquals(List.of(info), controller.checkUpdates(List.of(installedCapability)).collectList().block());
         assertEquals(List.of(classifier), controller.getTagClassifiers("plugin").collectList().block());
         assertEquals(classifier, controller.getTagClassifier("classifier-1").block());
@@ -64,6 +69,7 @@ class MarketplaceClientControllerTest {
         verify(client).getDetail("cap-1");
         verify(client).checkAvailability("cap-1");
         verify(client).getVersions("cap-1");
+        verify(client).download("cap-1", "1.0.0");
         verify(client).checkUpdates(List.of(installedCapability));
         verify(client).getTagClassifiers("plugin");
         verify(client).getTagClassifier("classifier-1");
