@@ -17,6 +17,11 @@ public class InstalledResource implements Serializable {
 
     private String capabilityId;
 
+    /**
+     * 能力 Provider ID.
+     */
+    private String providerId;
+
     private String resourceId;
 
     private String dataId;

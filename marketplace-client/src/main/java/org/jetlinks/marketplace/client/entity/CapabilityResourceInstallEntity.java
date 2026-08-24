@@ -145,7 +145,7 @@ public class CapabilityResourceInstallEntity extends ExtendableEntity<String> im
     }
 
     public InstalledResource toResource() {
-        return copyTo(new InstalledResource());
+        return copyTo(new InstalledResourceDetail());
     }
 
 }

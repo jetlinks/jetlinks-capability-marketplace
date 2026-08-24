@@ -83,6 +83,13 @@ Controller、Command Handler 和 Client 只负责参数与结果转发，不暴�
 用于表达一条逻辑安装绑定，而不是一次安装流水。相同能力资源重新安装、升级或补写版本时应复用同一主键，
 避免同一逻辑绑定因重复保存落成多条记录；版本号仍单独存储，不参与绑定主键生成。
 
+## 已安装资源详情
+
+`CapabilityResourceInstallEntity#toResource()` 返回 `InstalledResourceDetail`，
+在基础 `InstalledResource` 字段之外额外暴露 `providerId` 以及审计字段
+`creatorId`、`createTime`、`modifierId`、`modifyTime`。前端做安装状态判断时，
+直接读取安装记录的 `modifyTime`，不从版本详情字段推断更新时间。
+
 ## 安装资源资产类型转换与绑定
 
 能力资源的 `type` 表示能力 Provider 暴露的资源类型。安装资源资产类型优先通过 `CapabilityProvider`
