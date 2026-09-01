@@ -555,6 +555,9 @@ class DefaultCapabilityResourceManagerTest {
                     assertEquals(List.of(), dependencyResources);
                 }
                 if ("main-cap".equals(capabilityId)) {
+                    assertTrue(dependencyResources
+                                   .stream()
+                                   .allMatch(resource -> resource.getClass() == InstalledResource.class));
                     assertEquals(List.of("dep-cap-data"),
                                  dependencyResources.stream().map(InstalledResource::getDataId).toList());
                 }
