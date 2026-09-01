@@ -114,8 +114,8 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                 .install(new CapabilityContextImpl(
                     pkg,
                     request,
-                    toInstalledResources(installedResources),
-                    toInstalledResources(dependencyResources),
+                    toProviderInstalledResources(installedResources),
+                    toProviderInstalledResources(dependencyResources),
                     upstream))
                 // Provider 返回资源时仍可能切换线程，安装成功进度需要在同一语言上下文中生成。
                 .as(LocaleUtils::transform)
@@ -234,13 +234,16 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                 : resourceRepository.deleteById(ids).then());
     }
 
-    private List<InstalledResource> toInstalledResources(List<CapabilityResourceInstallEntity> resources) {
+    /**
+     * Provider 上下文可能跨越 RPC 边界，只传递 marketplace-core 中定义的基础资源契约。
+     */
+    private List<InstalledResource> toProviderInstalledResources(List<CapabilityResourceInstallEntity> resources) {
         if (CollectionUtils.isEmpty(resources)) {
             return List.of();
         }
         return resources
             .stream()
-            .map(CapabilityResourceInstallEntity::toResource)
+            .map(resource -> resource.copyTo(new InstalledResource()))
             .toList();
     }
 
