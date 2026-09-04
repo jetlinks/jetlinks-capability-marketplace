@@ -163,7 +163,7 @@ class HttpCapabilityMarketplaceClientTest {
                            {"id":"cap-2","name":"Capability 2"}
                            """),
             ndjsonResponse("""
-                           {"id":"cap-1","currentVersion":"1.0.0","version":{"version":"1.0.0","publishTime":100,"others":{"contentPublishedAt":90},"dependencyDetails":[{"id":"dep-1","version":{"version":"2.0.0","publishTime":80}}]}}
+                           {"id":"cap-1","currentVersion":"1.0.0","version":{"version":"1.0.0","publishTime":100,"others":{"contentPublishedAt":90},"dependencyDetails":[{"id":"dep-1","attachment":{"iconUrl":"https://example.com/dependency-icon.png"},"version":{"version":"2.0.0","publishTime":80}}]}}
                            """),
             ndjsonResponse("""
                            {"version":"1.0.0","available":true}
@@ -193,12 +193,10 @@ class HttpCapabilityMarketplaceClientTest {
         properties.setSecureKey("secure-token");
 
         HttpCapabilityMarketplaceClient client = new HttpCapabilityMarketplaceClient(
-            WebClient
-                .builder()
-                .exchangeFunction(request -> {
-                    requests.add(request);
-                    return Mono.just(responses.removeFirst());
-                }),
+            createWebClientBuilder(request -> {
+                requests.add(request);
+                return Mono.just(responses.removeFirst());
+            }),
             properties
         );
 
@@ -226,6 +224,8 @@ class HttpCapabilityMarketplaceClientTest {
         assertThat(versionInfos.get(0).getVersion().getOthers()).containsEntry("contentPublishedAt", 90);
         assertThat(versionInfos.get(0).getVersion().getDependencyDetails()).hasSize(1);
         assertThat(versionInfos.get(0).getVersion().getDependencyDetails().get(0).getId()).isEqualTo("dep-1");
+        assertThat(versionInfos.get(0).getVersion().getDependencyDetails().get(0).getAttachment())
+            .containsEntry("iconUrl", "https://example.com/dependency-icon.png");
 
         assertThat(versions).hasSize(1);
         assertThat(versions.get(0).getVersion()).isEqualTo("1.0.0");
@@ -342,9 +342,19 @@ class HttpCapabilityMarketplaceClientTest {
     }
 
     private HttpCapabilityMarketplaceClient createClient(java.util.function.Function<ClientRequest, Mono<ClientResponse>> exchangeFunction) {
-        WebClient webClient = WebClient.builder()
-                                       .exchangeFunction(request -> exchangeFunction.apply(request))
-                                       .build();
+        WebClient webClient = createWebClientBuilder(exchangeFunction).build();
         return new HttpCapabilityMarketplaceClient(webClient);
+    }
+
+    /**
+     * 创建完全由测试 ExchangeFunction 响应的 WebClient，避免初始化真实网络连接器。
+     */
+    private WebClient.Builder createWebClientBuilder(
+        java.util.function.Function<ClientRequest, Mono<ClientResponse>> exchangeFunction) {
+        return WebClient
+            .builder()
+            .clientConnector((method, uri, requestCallback) ->
+                                 Mono.error(new AssertionError("test connector must not be called")))
+            .exchangeFunction(exchangeFunction::apply);
     }
 }

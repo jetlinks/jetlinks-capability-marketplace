@@ -51,7 +51,8 @@ Provider 可通过 `CapabilityContext.monitor().recorder()` 记录结构化动�
 
 运行时能力市场只通过 `CapabilityMarketplaceClient` 访问 SaaS 能力市场，不直接依赖 SaaS 管理端的
 `MarketplaceResourceDetail`。公共契约新增 `CapabilityLatestVersionInfo`，在 `CapabilityInfo` 基础上携带最新
-`CapabilityVersion`；版本信息补充 `publishTime`、`others` 和 `dependencyDetails`，其中依赖详情仍使用
+`CapabilityVersion` 和资源级 `attachment`；版本信息补充 `publishTime`、`others` 和
+`dependencyDetails`，其中依赖详情仍使用
 `CapabilityLatestVersionInfo` 表达启用的依赖能力，并在其 `versionRange` 范围内选择最高版本。
 
 查询沿用 `CapabilitySearchRequest` 的分页和筛选语义；`paging` 默认为 `true`，设置为 `false` 时忽略
