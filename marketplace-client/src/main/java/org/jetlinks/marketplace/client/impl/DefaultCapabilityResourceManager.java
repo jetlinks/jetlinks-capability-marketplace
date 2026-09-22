@@ -348,7 +348,10 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                             successEvent(capabilityId, pkg.getVersion())));
                 })
                 .then(Mono.<ProgressState<InstalledResource>>empty())
-                .onErrorResume(err -> Mono.just(ProgressState.error(err)))
+                .onErrorResume(err -> {
+                    log.error("error installing {}", capabilityId, err);
+                    return Mono.just(ProgressState.error(err));
+                })
                 .doFinally(ignore -> progressStream.emitComplete(Reactors.emitFailureHandler()))
                 .contextWrite(installContext)
         );
