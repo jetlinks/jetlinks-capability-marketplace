@@ -113,3 +113,14 @@ assets-component，后者使用相同的 Provider 转换结果按资产类型批
 测试目标：覆盖资产类型转换、Provider 返回空 Mono 时回退资源类型、Provider 缺失时回退资源类型、批量自动绑定、安装记录保存失败时不执行后处理，
 以及集群 Provider 远程转换和缓存刷新行为。当前按仓库协作约束不自动新增或修改测试；涉及仓库的 `git diff --check` 已通过，Java
 编译和测试未自动执行，请开发者切换 Java 21 后自行验证。
+
+## 2.20 构建与版本
+
+`2.20` 源码分支沿用能力市场独立的 `1.0.0-SNAPSHOT` Maven 坐标；CI 在该分支沿用现有 Maven 发布配置。
+构建入口为 `.github/workflows/maven-publish.yml`；保留该仓库原有模块选择、profile、运行器和私服配置。构建前先准备对应版本的父 POM、组件和直接依赖。
+
+依赖就绪后执行验证（需要仓库原有 Maven 配置与构建环境）：
+
+```bash
+mvn clean verify
+```
