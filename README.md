@@ -1,5 +1,5 @@
 # jetlinks-capability-marketplace
-JetLinks 能力市场SDK
+JetLinks 能力市场 SDK，提供能力检索、版本查询、能力包下载、依赖安装、Provider 扩展与已安装资源管理，支持 HTTP 和平台命令两种访问方式。
 
 ## 能力操作上下文与事件上报
 
@@ -61,11 +61,11 @@ Provider 可通过 `CapabilityContext.monitor().recorder()` 记录结构化动�
 SaaS Manager 内部复用资源详情查询和直接依赖装配逻辑，在 `MarketplacePublicService` 统一转换为公共契约；
 Controller、Command Handler 和 Client 只负责参数与结果转发，不暴露 SaaS 内部实体和 DTO。
 
-本次只展开当前版本的直接依赖，依赖项自身的 `dependencyDetails` 不递归填充；发布时间原样返回版本
+查询只展开当前版本的直接依赖，依赖项自身的 `dependencyDetails` 不递归填充；发布时间原样返回版本
 `publishTime` 与 `others.contentPublishedAt`，由调用方按 `publishTime` 优先、`contentPublishedAt` 兜底的规则
 判断同版本内容是否更新。不改变现有能力安装时的 `versionRange` 解析和依赖安装行为。
 
-测试覆盖：
+查询行为：
 
 - 公共查询返回能力基本信息、最新版本、发布时间、`others`，以及启用的直接依赖在版本范围内的最高版本。
 - 没有最新版本时 `version` 为 `null`；没有依赖时 `dependencyDetails` 为空集合，不产生递归查询或阻塞调用。
@@ -103,24 +103,9 @@ assets-component，后者使用相同的 Provider 转换结果按资产类型批
 业务侧需要处理 `CapabilityResourceInstallEntity` 时，统一使用 marketplace-client 提供的 `CapabilityProviderUtils`
 解析为 `ResolvedAssetTypeInstalledResource`，统一处理 Provider 转换与资源类型回退。
 
-本次实施范围：
+扩展点：
 
-- marketplace-core：增加资源类型到资产类型的响应式转换 SPI，默认按资源类型作为资产类型返回。
-- marketplace-client：保存 Provider ID，增加安装后处理 SPI 和安装资源资产类型解析工具，在 `savePackage` 保存安装记录后调用。
+- marketplace-core：提供资源类型到资产类型的响应式转换 SPI，默认按资源类型作为资产类型返回。
+- marketplace-client：保存 Provider ID，提供安装后处理 SPI 和安装资源资产类型解析工具，在 `savePackage` 保存安装记录后调用。
 - assets-component：按 Provider 转换结果过滤已安装资源，并自动绑定有资产类型和数据 ID 的资源。
 - 集群 Provider：通过 RPC 远程调用实际 Provider 的转换方法，并在 Cluster Provider 本地使用 Map 缓存正、负结果；Provider 刷新时清空。
-
-测试目标：覆盖资产类型转换、Provider 返回空 Mono 时回退资源类型、Provider 缺失时回退资源类型、批量自动绑定、安装记录保存失败时不执行后处理，
-以及集群 Provider 远程转换和缓存刷新行为。当前按仓库协作约束不自动新增或修改测试；涉及仓库的 `git diff --check` 已通过，Java
-编译和测试未自动执行，请开发者切换 Java 21 后自行验证。
-
-## 2.20 构建与版本
-
-`2.20` 源码分支沿用能力市场独立的 `1.0.0-SNAPSHOT` Maven 坐标；CI 在该分支沿用现有 Maven 发布配置。
-构建入口为 `.github/workflows/maven-publish.yml`；保留该仓库原有模块选择、profile、运行器和私服配置。构建前先准备对应版本的父 POM、组件和直接依赖。
-
-依赖就绪后执行验证（需要仓库原有 Maven 配置与构建环境）：
-
-```bash
-mvn clean verify
-```
