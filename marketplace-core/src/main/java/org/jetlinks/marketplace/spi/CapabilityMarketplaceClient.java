@@ -1,5 +1,6 @@
 package org.jetlinks.marketplace.spi;
 
+import org.hswebframework.web.api.crud.entity.PagerResult;
 import org.jetlinks.marketplace.CapabilityInfo;
 import org.jetlinks.marketplace.CapabilityAvailability;
 import org.jetlinks.marketplace.CapabilityPackage;
@@ -34,6 +35,17 @@ public interface CapabilityMarketplaceClient {
      */
     default Flux<CapabilityLatestVersionInfo> searchVersionInfo(CapabilitySearchRequest request) {
         return Flux.error(new UnsupportedOperationException("不支持查询能力最新版本详情"));
+    }
+
+    /**
+     * 分页查询能力及其最新版本详情。
+     *
+     * @param request 搜索条件
+     * @return 含总数的能力最新版本详情分页结果
+     * @since 2.12
+     */
+    default Mono<PagerResult<CapabilityLatestVersionInfo>> queryVersionInfo(CapabilitySearchRequest request) {
+        return Mono.error(new UnsupportedOperationException("不支持分页查询能力最新版本详情"));
     }
 
     Mono<CapabilityInfo> getDetail(String capabilityId);

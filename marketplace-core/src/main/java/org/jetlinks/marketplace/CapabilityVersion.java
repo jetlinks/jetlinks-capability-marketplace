@@ -39,6 +39,12 @@ public class CapabilityVersion implements Serializable, Comparable<CapabilityVer
     private Map<String, Object> others;
     /** 当前版本的直接依赖详情。 */
     private List<CapabilityLatestVersionInfo> dependencyDetails;
+    /**
+     * 当前版本能力包中的资源，仅在查询请求显式要求时返回。
+     * <p>
+     * 该字段用于读取包内展示元数据；安装仍应通过 {@link CapabilityPackage} 获取原始能力包。
+     */
+    private List<CapabilityResource> resources;
 
     public Version version() {
         return Version.parseNullable(version);

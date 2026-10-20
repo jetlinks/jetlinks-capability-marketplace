@@ -3,6 +3,7 @@ package org.jetlinks.marketplace.client.web;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.AllArgsConstructor;
+import org.hswebframework.web.api.crud.entity.PagerResult;
 import org.hswebframework.web.authorization.annotation.Authorize;
 import org.hswebframework.web.authorization.annotation.Resource;
 import org.jetlinks.marketplace.CapabilityAvailability;
@@ -34,6 +35,12 @@ public class MarketplaceClientController {
     @Operation(summary = "搜索能力最新版本详情")
     public Flux<CapabilityLatestVersionInfo> searchVersionInfo(@RequestBody CapabilitySearchRequest request) {
         return client.searchVersionInfo(request);
+    }
+
+    @PostMapping("/capabilities/version/_query")
+    @Operation(summary = "分页查询能力最新版本详情")
+    public Mono<PagerResult<CapabilityLatestVersionInfo>> queryVersionInfo(@RequestBody CapabilitySearchRequest request) {
+        return client.queryVersionInfo(request);
     }
 
     @GetMapping("/capabilities/{id}")
