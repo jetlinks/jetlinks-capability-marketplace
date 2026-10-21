@@ -33,4 +33,11 @@ public class CapabilitySearchRequest implements Serializable {
     private boolean paging = true;
     private int pageIndex = 0;
     private int pageSize = 20;
+
+    /**
+     * 是否返回最新版本能力包中的资源。
+     * <p>
+     * 默认不返回，避免普通能力市场列表携带完整包内资源；调用方仅在需要读取包内展示元数据时开启。
+     */
+    private boolean includeVersionResources;
 }
