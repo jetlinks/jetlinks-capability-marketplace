@@ -1,6 +1,5 @@
 package org.jetlinks.marketplace.client.command;
 
-import org.hswebframework.web.api.crud.entity.PagerResult;
 import org.jetlinks.marketplace.*;
 import org.jetlinks.marketplace.command.*;
 import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
@@ -31,7 +30,6 @@ class CapabilityMarketplaceCommandSupportTest {
         info.setId("cap-1");
         CapabilityLatestVersionInfo versionInfo = new CapabilityLatestVersionInfo();
         versionInfo.setId("cap-1");
-        PagerResult<CapabilityLatestVersionInfo> versionPage = PagerResult.of(1, List.of(versionInfo));
 
         CapabilityAvailability availability = new CapabilityAvailability();
         availability.setCapabilityId("cap-1");
@@ -59,7 +57,6 @@ class CapabilityMarketplaceCommandSupportTest {
 
         when(client.search(any())).thenReturn(Flux.just(info));
         when(client.searchVersionInfo(any())).thenReturn(Flux.just(versionInfo));
-        when(client.queryVersionInfo(any())).thenReturn(Mono.just(versionPage));
         when(client.getDetail("cap-1")).thenReturn(Mono.just(info));
         when(client.checkAvailability("cap-1")).thenReturn(Mono.just(availability));
         when(client.getVersions("cap-1")).thenReturn(Flux.just(version));
@@ -75,10 +72,6 @@ class CapabilityMarketplaceCommandSupportTest {
             List.of(versionInfo),
             support.searchVersionInfo(new SearchCapabilityVersionInfoCommand().with(searchRequest)).collectList().block()
         );
-        assertEquals(
-            versionPage,
-            support.queryVersionInfo(new QueryCapabilityVersionInfoCommand().with(searchRequest)).block()
-        );
         assertEquals(info, support.getDetail(new GetCapabilityDetailCommand().setCapabilityId("cap-1")).block());
         assertEquals(availability, support.checkAvailability(new GetCapabilityAvailabilityCommand().setCapabilityId("cap-1")).block());
         assertEquals(List.of(version), support.getVersions(new GetCapabilityVersionsCommand().setCapabilityId("cap-1")).collectList().block());
@@ -91,7 +84,6 @@ class CapabilityMarketplaceCommandSupportTest {
 
         verify(client).search(argThat(request -> request != null && "demo".equals(request.getKeyword())));
         verify(client).searchVersionInfo(argThat(request -> request != null && "demo".equals(request.getKeyword())));
-        verify(client).queryVersionInfo(argThat(request -> request != null && "demo".equals(request.getKeyword())));
         verify(client).getDetail("cap-1");
         verify(client).checkAvailability("cap-1");
         verify(client).getVersions("cap-1");

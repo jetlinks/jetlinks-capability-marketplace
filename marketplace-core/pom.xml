@@ -22,12 +22,6 @@
             <artifactId>jetlinks-core</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>org.hswebframework.web</groupId>
-            <artifactId>hsweb-commons-crud</artifactId>
-            <version>5.0.2-SNAPSHOT</version>
-        </dependency>
-
     </dependencies>
 
 </project>

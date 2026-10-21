@@ -1,7 +1,6 @@
 package org.jetlinks.marketplace.client.command;
 
 import lombok.AllArgsConstructor;
-import org.hswebframework.web.api.crud.entity.PagerResult;
 import org.jetlinks.core.annotation.command.CommandHandler;
 import org.jetlinks.marketplace.*;
 import org.jetlinks.marketplace.command.*;
@@ -22,14 +21,6 @@ public class CapabilityMarketplaceCommandSupport {
     @CommandHandler
     public Flux<CapabilityLatestVersionInfo> searchVersionInfo(SearchCapabilityVersionInfoCommand request) {
         return client.searchVersionInfo(request.asRequest());
-    }
-
-    /**
-     * 将运行时命令转发为保留总数的市场版本分页查询。
-     */
-    @CommandHandler
-    public Mono<PagerResult<CapabilityLatestVersionInfo>> queryVersionInfo(QueryCapabilityVersionInfoCommand request) {
-        return client.queryVersionInfo(request.asRequest());
     }
 
     @CommandHandler

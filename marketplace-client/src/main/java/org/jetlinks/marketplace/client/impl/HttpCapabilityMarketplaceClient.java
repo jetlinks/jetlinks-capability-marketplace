@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.hswebframework.web.api.crud.entity.PagerResult;
 import org.apache.commons.lang3.StringUtils;
 import org.hswebframework.web.crud.web.ResponseMessage;
 import org.jetlinks.marketplace.CapabilityAvailability;
@@ -23,7 +22,6 @@ import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.ResponseStatusException;
@@ -39,7 +37,6 @@ import java.util.List;
  * <ul>
  *   <li>{@code POST {base}/api/v1/marketplace/capabilities/_search} — body: {@link CapabilitySearchRequest}}</li>
  *   <li>{@code POST {base}/api/v1/marketplace/capabilities/version/_search} — body: {@link CapabilitySearchRequest}}</li>
- *   <li>{@code POST {base}/api/v1/marketplace/capabilities/version/_query} — body: {@link CapabilitySearchRequest}}</li>
  *   <li>{@code GET {base}/api/v1/marketplace/capabilities/{id}}</li>
  *   <li>{@code GET {base}/api/v1/marketplace/capabilities/{id}/availability}</li>
  *   <li>{@code GET {base}/api/v1/marketplace/capabilities/{id}/versions}</li>
@@ -95,18 +92,6 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
                 .bodyValue(request)
                 .accept(MediaType.APPLICATION_NDJSON),
             CapabilityLatestVersionInfo.class
-        );
-    }
-
-    @Override
-    public Mono<PagerResult<CapabilityLatestVersionInfo>> queryVersionInfo(CapabilitySearchRequest request) {
-        return exchangeToMono(
-            webClient
-                .post()
-                .uri("/marketplace/capabilities/version/_query")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(request),
-            new ParameterizedTypeReference<PagerResult<CapabilityLatestVersionInfo>>() {}
         );
     }
 
@@ -222,17 +207,6 @@ public class HttpCapabilityMarketplaceClient implements CapabilityMarketplaceCli
     }
 
     private <T> Mono<T> exchangeToMono(WebClient.RequestHeadersSpec<?> request, Class<T> type) {
-        return Mono.deferContextual(context -> applyOperationContext(request, context)
-            .exchangeToMono(response -> {
-                if (response.statusCode().isError()) {
-                    return createResponseException(response).flatMap(Mono::error);
-                }
-                return response.bodyToMono(type);
-            }));
-    }
-
-    private <T> Mono<T> exchangeToMono(WebClient.RequestHeadersSpec<?> request,
-                                       ParameterizedTypeReference<T> type) {
         return Mono.deferContextual(context -> applyOperationContext(request, context)
             .exchangeToMono(response -> {
                 if (response.statusCode().isError()) {

@@ -1,6 +1,5 @@
 package org.jetlinks.marketplace.client.web;
 
-import org.hswebframework.web.api.crud.entity.PagerResult;
 import org.jetlinks.marketplace.*;
 import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
 import org.junit.jupiter.api.Test;
@@ -28,7 +27,6 @@ class MarketplaceClientControllerTest {
         info.setId("cap-1");
         CapabilityLatestVersionInfo versionInfo = new CapabilityLatestVersionInfo();
         versionInfo.setId("cap-1");
-        PagerResult<CapabilityLatestVersionInfo> versionPage = PagerResult.of(1, List.of(versionInfo));
 
         CapabilityAvailability availability = new CapabilityAvailability();
         availability.setCapabilityId("cap-1");
@@ -48,7 +46,6 @@ class MarketplaceClientControllerTest {
 
         when(client.search(searchRequest)).thenReturn(Flux.just(info));
         when(client.searchVersionInfo(searchRequest)).thenReturn(Flux.just(versionInfo));
-        when(client.queryVersionInfo(searchRequest)).thenReturn(Mono.just(versionPage));
         when(client.getDetail("cap-1")).thenReturn(Mono.just(info));
         when(client.checkAvailability("cap-1")).thenReturn(Mono.just(availability));
         when(client.getVersions("cap-1")).thenReturn(Flux.just(version));
@@ -59,7 +56,6 @@ class MarketplaceClientControllerTest {
 
         assertEquals(List.of(info), controller.search(searchRequest).collectList().block());
         assertEquals(List.of(versionInfo), controller.searchVersionInfo(searchRequest).collectList().block());
-        assertEquals(versionPage, controller.queryVersionInfo(searchRequest).block());
         assertEquals(info, controller.getDetail("cap-1").block());
         assertEquals(availability, controller.checkAvailability("cap-1").block());
         assertEquals(List.of(version), controller.getVersions("cap-1").collectList().block());
@@ -70,7 +66,6 @@ class MarketplaceClientControllerTest {
 
         verify(client).search(searchRequest);
         verify(client).searchVersionInfo(searchRequest);
-        verify(client).queryVersionInfo(searchRequest);
         verify(client).getDetail("cap-1");
         verify(client).checkAvailability("cap-1");
         verify(client).getVersions("cap-1");
