@@ -94,8 +94,8 @@ SaaS 公开查询只返回启用资源，并沿用既有认证、可用性判断
 `CapabilityResourceInstallEntity.type`。
 
 安装记录额外保存 Provider ID，不修改公共的 `InstalledResource`，也不把转换后的资产类型写入安装资源。
-资产、租户组件对已注册资产类型及别名直接使用规范资产 ID；未注册类型再使用 `CapabilityProviderUtils`
-按记录中的 Provider 解析为 `ResolvedAssetTypeInstalledResource`。查询权限、结果过滤和安装后绑定采用相同优先级。
+资产、租户组件统一解析时先使用已注册资产类型及别名的规范 ID；未注册类型直接调用 `CapabilityProviders.resolveAssetType`
+按实际 Provider 转换。查询前没有具体 Provider 时保留后置解析，结果过滤与安装后绑定使用相同优先级。
 安装记录保存完成后由 marketplace-client 的安装后扩展点通知 assets-component，按最终资产类型批量绑定当前资产持有人。
 SDK 不依赖资产类型注册表，Provider 转换及资源类型回退仍由原有解析工具处理。
 
