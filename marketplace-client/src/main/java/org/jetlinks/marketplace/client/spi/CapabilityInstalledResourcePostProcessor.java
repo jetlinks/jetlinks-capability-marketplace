@@ -9,7 +9,7 @@ import java.util.Collection;
 /**
  * 已安装能力资源保存后的扩展点.
  *
- * <p>由 marketplace-client 在安装资源记录成功保存后顺序调用，用于处理依赖具体业务模块的后置副作用。
+ * <p>由 marketplace-client 在默认或扩展的安装记录管理成功完成后顺序调用，用于处理依赖具体业务模块的后置副作用。
  * 实现不应修改安装记录；返回异常会中断当前安装事务并向上游传播。</p>
  *
  * @author zhouhao
