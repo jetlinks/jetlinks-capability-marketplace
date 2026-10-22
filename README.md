@@ -113,6 +113,9 @@ saas-runtime-agent 6 项定向测试全部通过，相关模块编译通过。te
 分页、返回字段投影、420 条跨类型与跨批次排序、列表不分页、指定数据 ID、跨租户重复订阅，
 以及故障注入下权限转换器或资产表缺失时失败且不读取实体。
 SDK 测试确认升级目标数据 ID 下推，运行时测试确认原查询参数转发至统一权限入口。验证范围为本地单元测试与 H2 SQL，未执行真实集群及其他数据库方言验证。
+实现提交：`fb970834de515558caa3d94d86e086910fd53a20`；[SDK PR #35](https://github.com/jetlinks/jetlinks-capability-marketplace/pull/35)。
+配套变更：[资产组件 #1661](https://github.com/jetlinks-v2/jetlinks-components/pull/1661)、
+[租户组件 #50](https://github.com/jetlinks-v2/jetlinks-tenant/pull/50)、[SaaS #100](https://github.com/jetlinks-v2/jetlinks-saas/pull/100)。
 
 ## 安装资源资产类型转换与绑定
 
