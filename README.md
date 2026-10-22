@@ -91,6 +91,29 @@ Controller、Command Handler 和 Client 只负责参数与结果转发，不暴�
 `creatorId`、`createTime`、`modifierId`、`modifyTime`。前端做安装状态判断时，
 直接读取安装记录的 `modifyTime`，不从版本详情字段推断更新时间。
 
+### 已安装资源查询约束
+
+已安装资源加载的优化范围仅包含 marketplace-client 查询入口，以及 assets-component、tenant-component 的查询前权限扩展；
+运行时命令查询复用同一入口，不调整安装写入与自动绑定行为，也不增加表字段。
+
+加载顺序为：先将能力、资源类型和指定目标数据 ID 加入查询条件，再通过安装资源拦截器注入查询权限，最后读取安装记录并保留已有结果过滤。
+需要解析资产类型时，仅按业务条件查询去重的 `providerId/type` 组合，复用 Provider 的资源类型转换规则；权限约束作用于安装记录的 `dataId`，
+不同 Provider/资源类型的约束分别分组，避免混用资产类型。查询条件使用 AssetsHolder 体系，缺少必要的数据库条件转换器时明确失败。
+
+查询入口位于 `marketplace-client/src/main/java/org/jetlinks/marketplace/client/impl/DefaultCapabilityResourceManager.java`，
+查询前扩展位于同模块的 `spi/CapabilityInstalledResourceInterceptor.java`。列表加载保持不分页，动态查询保留调用方的排序、分页及业务条件；
+内部查询保留结果过滤和顺序恢复需要的 `id/providerId/type/dataId`，过滤后按安装记录 ID 恢复 SQL 顺序，
+返回前恢复调用方请求的字段投影；不修改调用方参数，也不跨订阅缓存权限。结果过滤按 200 条顺序处理，避免全量收集。
+资源所属微服务复用实体 `@Asset` 的本地权限转换器注册，不要求额外声明 `AssetType.getTableName()`；
+缺少转换器的测试属于故障注入，验证错误不能退化为未受限读取。
+
+验证结果（2026-10-22，JDK 21，Maven 离线联合 reactor）：marketplace-client 24 项、assets-component 6 项、tenant-component 19 项、
+saas-runtime-agent 6 项定向测试全部通过，相关模块编译通过。tenant-component 包含 14 项 `InstalledResourceQueryIntegrationTest` H2 实际 SQL 测试：
+加入 1,000 条其他租户安装记录后仍仅解码 2 条可见记录；覆盖多 Provider 的相同资源类型和重叠数据 ID、空权限范围、查询条件 OR 分组、
+分页、返回字段投影、420 条跨类型与跨批次排序、列表不分页、指定数据 ID、跨租户重复订阅，
+以及故障注入下权限转换器或资产表缺失时失败且不读取实体。
+SDK 测试确认升级目标数据 ID 下推，运行时测试确认原查询参数转发至统一权限入口。验证范围为本地单元测试与 H2 SQL，未执行真实集群及其他数据库方言验证。
+
 ## 安装资源资产类型转换与绑定
 
 能力资源的 `type` 表示能力 Provider 暴露的资源类型。安装资源资产类型优先通过 `CapabilityProvider`

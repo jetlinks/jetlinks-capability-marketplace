@@ -2,7 +2,11 @@ package org.jetlinks.marketplace.client.impl;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.hswebframework.ezorm.rdb.executor.wrapper.ResultWrappers;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveRepository;
+import org.hswebframework.ezorm.rdb.operator.dml.query.SelectColumn;
+import org.hswebframework.ezorm.rdb.operator.dml.query.Selects;
+import org.hswebframework.web.api.crud.entity.QueryParamEntity;
 import org.hswebframework.web.bean.FastBeanCopier;
 import org.hswebframework.web.exception.NotFoundException;
 import org.hswebframework.web.exception.ValidationException;
@@ -22,6 +26,8 @@ import org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceFilterContext;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceInterceptor;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourcePostProcessor;
+import org.jetlinks.marketplace.client.spi.CapabilityProviderUtils;
+import org.jetlinks.marketplace.client.spi.CapabilityProviderUtils.ResolvedAssetTypeInstalledResource;
 import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
 import org.jetlinks.marketplace.spi.CapabilityProvider;
 import org.jetlinks.marketplace.spi.CapabilityProviders;
@@ -39,6 +45,8 @@ import java.util.stream.Collectors;
 
 @Slf4j
 public class DefaultCapabilityResourceManager implements CapabilityResourceManager {
+
+    private static final Set<String> QUERY_PERMISSION_FIELDS = Set.of("id", "type", "providerId", "dataId");
 
     private final CapabilityMarketplaceClient client;
     private final ReactiveRepository<CapabilityResourceInstallEntity, String> resourceRepository;
@@ -180,6 +188,28 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     }
 
     @Override
+    public Flux<InstalledResource> queryInstalledResources(QueryParamEntity query) {
+        return Flux.defer(() -> {
+            QueryParamEntity snapshot = query.clone();
+            Set<String> hiddenFields = QUERY_PERMISSION_FIELDS.stream()
+                .filter(field -> (CollectionUtils.isNotEmpty(snapshot.getIncludes())
+                    && !containsQueryField(snapshot.getIncludes(), field))
+                    || containsQueryField(snapshot.getExcludes(), field))
+                .collect(Collectors.toSet());
+            return loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext.capability(null), snapshot)
+                // 权限和顺序恢复使用内部字段，返回前恢复调用方要求的字段投影。
+                .map(resource -> hiddenFields.isEmpty()
+                    ? resource.toResource()
+                    : FastBeanCopier.copy(resource, new CapabilityResourceInstallEntity(), hiddenFields).toResource());
+        });
+    }
+
+    private boolean containsQueryField(Collection<String> fields, String property) {
+        return fields != null && fields.stream().anyMatch(field -> "*".equals(field)
+            || property.equals(org.hswebframework.utils.StringUtils.underScoreCase2CamelCase(field)));
+    }
+
+    @Override
     public Flux<InstalledResource> listInstalledResources(String type, Collection<String> dataId) {
 
         return loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext.data(type, dataId))
@@ -193,7 +223,9 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     }
 
     private Flux<CapabilityResourceInstallEntity> loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext context) {
-        var query = resourceRepository.createQuery();
+        QueryParamEntity param = QueryParamEntity.of();
+        param.setPaging(false);
+        var query = param.toNestQuery();
 
         if (StringUtils.hasText(context.capabilityId())) {
             query.is(CapabilityResourceInstallEntity::getCapabilityId, context.capabilityId());
@@ -208,16 +240,72 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
             query.in(CapabilityResourceInstallEntity::getResourceId, context.resourceIds());
         }
 
-        return filterInstalledResources(context, query.fetch());
+        return loadInstalledResourceEntities(context, param);
+    }
+
+    private Flux<CapabilityResourceInstallEntity> loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext context,
+                                                                               QueryParamEntity query) {
+        return Flux.defer(() -> {
+            QueryParamEntity original = query.clone();
+            // 仅在权限扩展需要时读取类型组合，两个权限扩展共享本次订阅的解析结果。
+            Flux<ResolvedAssetTypeInstalledResource> resourceTypes = loadInstalledResourceTypes(original).cache();
+            Mono<QueryParamEntity> prepared = Mono.just(original.clone());
+            for (CapabilityInstalledResourceInterceptor interceptor : installedResourceInterceptors) {
+                prepared = prepared.flatMap(param -> interceptor.prepareQuery(context, param, resourceTypes));
+            }
+            return prepared.flatMapMany(param -> {
+                // 过滤器需要真实的资源类型和 dataId，不能由查询投影隐藏这些权限字段。
+                if (CollectionUtils.isNotEmpty(param.getIncludes())) {
+                    Set<String> includes = new HashSet<>(param.getIncludes());
+                    includes.addAll(QUERY_PERMISSION_FIELDS);
+                    param.setIncludes(includes);
+                }
+                if (CollectionUtils.isNotEmpty(param.getExcludes())) {
+                    Set<String> excludes = new HashSet<>(param.getExcludes());
+                    excludes.removeIf(field -> "*".equals(field)
+                        || QUERY_PERMISSION_FIELDS.contains(org.hswebframework.utils.StringUtils.underScoreCase2CamelCase(field)));
+                    param.setExcludes(excludes);
+                }
+                var installedQuery = resourceRepository.createQuery();
+                installedQuery.setParam(param);
+                return filterInstalledResources(context, installedQuery.fetch());
+            });
+        });
+    }
+
+    private Flux<ResolvedAssetTypeInstalledResource> loadInstalledResourceTypes(QueryParamEntity query) {
+        return Flux.defer(() -> resourceRepository
+            .nativeQuery()
+            .select(Selects.column("providerId").as("providerId"), Selects.column("type").as("type"))
+            .where(query.getTerms())
+            .context(query.getContext())
+            .groupBy(SelectColumn.of("providerId"), SelectColumn.of("type"))
+            .fetch(ResultWrappers.map())
+            .reactive()
+            .map(row -> {
+                CapabilityResourceInstallEntity resourceType = new CapabilityResourceInstallEntity();
+                resourceType.setProviderId((String) row.get("providerId"));
+                resourceType.setType((String) row.get("type"));
+                return resourceType;
+            })
+            .as(CapabilityProviderUtils::resolveAssetTypes));
     }
 
     private Flux<CapabilityResourceInstallEntity> filterInstalledResources(CapabilityInstalledResourceFilterContext context,
                                                                            Flux<CapabilityResourceInstallEntity> resources) {
-        Flux<CapabilityResourceInstallEntity> filtered = resources;
-        for (CapabilityInstalledResourceInterceptor interceptor : installedResourceInterceptors) {
-            filtered = interceptor.filter(context, filtered);
+        if (installedResourceInterceptors.isEmpty()) {
+            return resources;
         }
-        return filtered;
+        return resources.buffer(200).concatMap(batch -> {
+            Flux<CapabilityResourceInstallEntity> filtered = Flux.fromIterable(batch);
+            for (CapabilityInstalledResourceInterceptor interceptor : installedResourceInterceptors) {
+                filtered = interceptor.filter(context, filtered);
+            }
+            // 类型分组和异步权限检查可改变返回顺序，按安装记录 ID 恢复 SQL 顺序并保持批次有界。
+            return filtered.collectMap(CapabilityResourceInstallEntity::getId)
+                .flatMapMany(allowed -> Flux.fromIterable(batch)
+                    .mapNotNull(resource -> allowed.get(resource.getId())));
+        });
     }
 
     private Mono<Void> deleteInstalledResources(Collection<CapabilityResourceInstallEntity> resources) {
@@ -507,7 +595,8 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     private Mono<List<CapabilityResourceInstallEntity>> resolveUpgradeTargets(String capabilityId,
                                                                               CapabilityInstallRequest request) {
         CapabilityInstallRequest.UpgradeOptions upgrade = request.getEffectiveUpgrade();
-        return loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext.capability(capabilityId))
+        return loadInstalledResourceEntities(new CapabilityInstalledResourceFilterContext(
+            capabilityId, null, upgrade.getTargetDataIds(), null))
             .collectList()
             .flatMap(resources -> {
                 if (upgrade.hasTargetDataIds()) {
