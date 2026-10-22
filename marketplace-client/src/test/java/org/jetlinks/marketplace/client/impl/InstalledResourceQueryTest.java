@@ -8,6 +8,7 @@ import org.jetlinks.marketplace.InstalledResource;
 import org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceFilterContext;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceInterceptor;
+import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceLoadChain;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceLoadContext;
 import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
 import org.junit.jupiter.api.Test;
@@ -60,7 +61,7 @@ class InstalledResourceQueryTest {
     void shouldKeepEmptyCustomLoadWithoutDefaultFallback() {
         CapabilityInstalledResourceInterceptor denied = mock(CapabilityInstalledResourceInterceptor.class);
         CapabilityInstalledResourceInterceptor remaining = mock(CapabilityInstalledResourceInterceptor.class);
-        when(denied.loadInstalled(any())).thenReturn(Flux.empty());
+        when(denied.loadInstalled(any(), any())).thenReturn(Flux.empty());
         when(denied.filter(any(), any())).thenAnswer(call -> call.getArgument(1));
         when(remaining.filter(any(), any())).thenAnswer(call -> call.getArgument(1));
 
@@ -68,7 +69,7 @@ class InstalledResourceQueryTest {
             .collectList().block(TIMEOUT).isEmpty());
 
         verifyNoInteractions(repository);
-        verify(remaining, never()).loadInstalled(any());
+        verify(remaining, never()).loadInstalled(any(), any());
     }
 
     @Test
@@ -110,6 +111,36 @@ class InstalledResourceQueryTest {
     }
 
     @Test
+    void shouldPassReplacementQueryToRemainingChainAndDefaultQuery() {
+        List<QueryParamEntity> original = new ArrayList<>();
+        List<QueryParamEntity> replacement = new ArrayList<>();
+        List<CapabilityInstalledResourceFilterContext> ranges = new ArrayList<>();
+        var first = new QueryInterceptor((context, query) -> {
+            original.add(query);
+            ranges.add(context);
+            QueryParamEntity updated = query.clone();
+            updated.toNestQuery().is("version", "replacement");
+            replacement.add(updated);
+            return Mono.just(updated);
+        });
+        var second = new QueryInterceptor((context, query) -> {
+            assertSame(ranges.getFirst(), context);
+            assertSame(replacement.getFirst(), query);
+            return Mono.just(query);
+        });
+        when(repository.createQuery()).thenReturn(installedQuery);
+        when(installedQuery.fetch()).thenReturn(Flux.empty());
+
+        manager(first, second).listInstalledResources("tool", List.of("data-1")).blockLast(TIMEOUT);
+
+        verify(installedQuery).setParam(replacement.getFirst());
+        assertNotSame(original.getFirst(), replacement.getFirst());
+        assertEquals(List.of("type", "dataId"), original.getFirst().getTerms().stream()
+            .map(term -> term.getColumn()).toList());
+        assertEquals("replacement", replacement.getFirst().getTerms().getLast().getValue());
+    }
+
+    @Test
     void shouldFilterCustomLoadedResourcesWithoutDefaultQuery() {
         CapabilityResourceInstallEntity visible = new CapabilityResourceInstallEntity();
         visible.setResourceId("visible");
@@ -117,7 +148,8 @@ class InstalledResourceQueryTest {
         hidden.setResourceId("hidden");
         var custom = new CapabilityInstalledResourceInterceptor() {
             @Override
-            public Flux<CapabilityResourceInstallEntity> loadInstalled(CapabilityInstalledResourceLoadContext context) {
+            public Flux<CapabilityResourceInstallEntity> loadInstalled(CapabilityInstalledResourceLoadContext context,
+                                                                       CapabilityInstalledResourceLoadChain chain) {
                 assertEquals("tool", context.getFilterContext().type());
                 return Flux.just(visible, hidden);
             }
@@ -144,8 +176,10 @@ class InstalledResourceQueryTest {
         BiFunction<CapabilityInstalledResourceFilterContext, QueryParamEntity, Mono<QueryParamEntity>> prepare
     ) implements CapabilityInstalledResourceInterceptor {
         @Override
-        public Flux<CapabilityResourceInstallEntity> loadInstalled(CapabilityInstalledResourceLoadContext context) {
-            return prepare.apply(context.getFilterContext(), context.getQuery()).flatMapMany(context::load);
+        public Flux<CapabilityResourceInstallEntity> loadInstalled(CapabilityInstalledResourceLoadContext context,
+                                                                   CapabilityInstalledResourceLoadChain chain) {
+            return prepare.apply(context.getFilterContext(), context.getQuery())
+                .flatMapMany(query -> chain.proceed(context.withQuery(query)));
         }
 
         @Override

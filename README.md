@@ -93,8 +93,9 @@ Controller、Command Handler 和 Client 只负责参数与结果转发，不暴�
 
 ### 安装记录加载与保存扩展
 
-marketplace-client 通过 `CapabilityInstalledResourceInterceptor.loadInstalled(context)` 加载安装记录，
-上下文提供加载范围、查询参数及继续加载的方法；扩展可调整查询后继续，或自行返回安装记录，随后统一执行已有结果过滤。
+marketplace-client 通过 `CapabilityInstalledResourceInterceptor.loadInstalled(context, chain)` 加载安装记录。
+上下文只携带加载范围和查询参数，`chain.proceed(context)` 继续后续节点，链尾执行默认查询；
+替换查询参数时使用 `chain.proceed(context.withQuery(query))`，自行返回记录则接管加载。所有来源随后统一执行已有结果过滤。
 SDK 不处理数据权限、不预查类型组合，也不扩展动态查询、字段投影或排序逻辑。
 列表加载保持不分页，安装状态判断、升级和依赖加载保留原有业务范围。
 
@@ -103,15 +104,16 @@ SDK 不处理数据权限、不预查类型组合，也不扩展动态查询、�
 查询入口位于 `marketplace-client/src/main/java/org/jetlinks/marketplace/client/impl/DefaultCapabilityResourceManager.java`，
 查询前扩展位于同模块的 `spi/CapabilityInstalledResourceInterceptor.java`。
 
-Provider 返回安装结果后统一调用 `afterInstalled(context)`。上下文携带 Provider、安装包、旧记录和新记录，
-`context.save()` 委托后续扩展，链尾默认替换旧记录并保存新记录；扩展可自行处理并跳过默认存储。
+Provider 返回安装结果后统一调用 `afterInstalled(context, chain)`。上下文只携带 Provider、安装包、旧记录和新记录，
+`chain.proceed(context)` 继续后续节点，链尾默认替换旧记录并保存新记录；扩展可自行处理并跳过默认存储。
 空结果代表扩展已完成处理，不触发默认回退；调用继续处理的方法时应只调用一次。记录处理完成后沿用已有保存后处理，
 资产绑定仍在此阶段执行；异常向安装事务传播。
+上下文按订阅创建，责任链节点位置固定，不共享可变游标、不自行订阅或重试。Spring 装配沿用 `@Order`，手动构造时使用传入列表顺序。
 这些钩子覆盖管理器的加载与安装后记录替换，独立查询命令和卸载删除仍沿用已有存储入口。
 扩展接管记录存储时需保证与其他入口兼容，外部存储的事务一致性由扩展负责。
 
-SDK 的 35 项测试通过，覆盖加载和保存的委托、接管、空结果、异常传播、重复订阅及原有安装行为。
-配套验证共 67 项通过，包含资产拦截器 9 项、租户 18 项和原有 SaaS 命令 5 项；未执行真实微服务部署联调。
+SDK 的 38 项测试通过，覆盖参数替换、委托顺序、短路、错误传播、订阅隔离及原有安装行为。
+配套验证共 71 项通过，包含资产拦截器 10 项、租户 18 项和原有 SaaS 命令 5 项；未执行真实微服务部署联调。
 [SDK PR #35](https://github.com/jetlinks/jetlinks-capability-marketplace/pull/35)。
 配套变更：[资产组件 #1661](https://github.com/jetlinks-v2/jetlinks-components/pull/1661)、
 [租户组件 #50](https://github.com/jetlinks-v2/jetlinks-tenant/pull/50)。

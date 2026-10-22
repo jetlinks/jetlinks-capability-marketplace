@@ -131,25 +131,24 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                     List<CapabilityResourceInstallEntity> entities = resources.stream()
                         .map(resource -> CapabilityResourceInstallEntity.from(resource, pkg))
                         .toList();
-                    return afterInstalled(provider, pkg,
-                        CollectionUtils.isEmpty(installedResources) ? List.of() : List.copyOf(installedResources), entities, 0)
+                    return afterInstalled(new CapabilityInstalledResourceSaveContext(provider, pkg,
+                        CollectionUtils.isEmpty(installedResources) ? List.of() : List.copyOf(installedResources), entities), 0)
                         // 无论默认保存还是扩展存储，记录管理完成后才执行资产绑定等后置副作用。
                         .then(entities.isEmpty() ? Mono.empty() : Mono.defer(() -> processInstalledResources(provider, entities)));
                 })));
     }
 
-    private Mono<Void> afterInstalled(CapabilityProvider provider,
-                                      CapabilityPackage pkg,
-                                      List<CapabilityResourceInstallEntity> previous,
-                                      List<CapabilityResourceInstallEntity> resources,
+    private Mono<Void> afterInstalled(CapabilityInstalledResourceSaveContext context,
                                       int index) {
         return Mono.defer(() -> {
             if (index == installedResourceInterceptors.size()) {
-                return deleteInstalledResources(previous)
-                    .then(Mono.defer(() -> resources.isEmpty() ? Mono.empty() : resourceRepository.save(resources).then()));
+                return deleteInstalledResources(context.getPreviousResources())
+                    .then(Mono.defer(() -> context.getResources().isEmpty()
+                        ? Mono.empty()
+                        : resourceRepository.save(context.getResources()).then()));
             }
-            return installedResourceInterceptors.get(index).afterInstalled(new CapabilityInstalledResourceSaveContext(
-                provider, pkg, previous, resources, () -> afterInstalled(provider, pkg, previous, resources, index + 1)));
+            return installedResourceInterceptors.get(index)
+                .afterInstalled(context, current -> afterInstalled(current, index + 1));
         });
     }
 
@@ -217,21 +216,21 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                 query.in(CapabilityResourceInstallEntity::getResourceId, context.resourceIds());
             }
 
-            return filterInstalledResources(context, loadInstalled(context, param, 0));
+            CapabilityInstalledResourceLoadContext loadContext = new CapabilityInstalledResourceLoadContext(context, param);
+            return filterInstalledResources(context, loadInstalled(loadContext, 0));
         });
     }
 
-    private Flux<CapabilityResourceInstallEntity> loadInstalled(CapabilityInstalledResourceFilterContext context,
-                                                               QueryParamEntity query,
+    private Flux<CapabilityResourceInstallEntity> loadInstalled(CapabilityInstalledResourceLoadContext context,
                                                                int index) {
         return Flux.defer(() -> {
             if (index == installedResourceInterceptors.size()) {
                 var installedQuery = resourceRepository.createQuery();
-                installedQuery.setParam(query);
+                installedQuery.setParam(context.getQuery());
                 return installedQuery.fetch();
             }
-            return installedResourceInterceptors.get(index).loadInstalled(new CapabilityInstalledResourceLoadContext(
-                context, query, current -> loadInstalled(context, current, index + 1)));
+            return installedResourceInterceptors.get(index)
+                .loadInstalled(context, current -> loadInstalled(current, index + 1));
         });
     }
 

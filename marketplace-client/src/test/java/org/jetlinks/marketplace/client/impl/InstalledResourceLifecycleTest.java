@@ -11,6 +11,7 @@ import org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceFilterContext;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceInterceptor;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourcePostProcessor;
+import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceSaveChain;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceSaveContext;
 import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
 import org.jetlinks.marketplace.spi.CapabilityProvider;
@@ -26,7 +27,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -83,13 +84,13 @@ class InstalledResourceLifecycleTest {
 
     @Test
     void shouldDelegateReplacementOnceThenRunPostProcessor() {
-        var first = new SaveInterceptor(context -> Mono.defer(() -> {
+        var first = new SaveInterceptor((context, chain) -> Mono.defer(() -> {
             events.add("first-before");
-            return context.save().doOnSuccess(ignore -> events.add("first-after"));
+            return chain.proceed(context).doOnSuccess(ignore -> events.add("first-after"));
         }));
-        var second = new SaveInterceptor(context -> Mono.defer(() -> {
+        var second = new SaveInterceptor((context, chain) -> Mono.defer(() -> {
             events.add("second-before");
-            return context.save().doOnSuccess(ignore -> events.add("second-after"));
+            return chain.proceed(context).doOnSuccess(ignore -> events.add("second-after"));
         }));
 
         save(manager(first, second)).block(TIMEOUT);
@@ -102,7 +103,7 @@ class InstalledResourceLifecycleTest {
     @Test
     void shouldLetCustomStorageReplaceDefaultPersistenceAndKeepPostProcessing() {
         List<CapabilityResourceInstallEntity> stored = new ArrayList<>(List.of(previous));
-        var custom = new SaveInterceptor(context -> Mono.fromRunnable(() -> {
+        var custom = new SaveInterceptor((context, chain) -> Mono.fromRunnable(() -> {
             assertSame(pkg, context.getCapabilityPackage());
             assertSame(provider, context.getProvider());
             assertEquals(List.of(previous), context.getPreviousResources());
@@ -113,7 +114,8 @@ class InstalledResourceLifecycleTest {
             events.add("custom-save");
         }));
 
-        save(manager(custom)).block(TIMEOUT);
+        var remaining = new SaveInterceptor((context, chain) -> Mono.fromRunnable(() -> events.add("unexpected")));
+        save(manager(custom, remaining)).block(TIMEOUT);
 
         assertEquals(List.of("new-data"), stored.stream().map(CapabilityResourceInstallEntity::getDataId).toList());
         assertEquals(List.of("custom-save", "post"), events);
@@ -123,7 +125,7 @@ class InstalledResourceLifecycleTest {
     @Test
     void shouldPropagateCustomStorageFailureWithoutDefaultFallbackOrPostProcessing() {
         RuntimeException error = new IllegalStateException("custom store failed");
-        var custom = new SaveInterceptor(context -> Mono.error(error));
+        var custom = new SaveInterceptor((context, chain) -> Mono.error(error));
 
         assertSame(error, assertThrows(RuntimeException.class, () -> save(manager(custom)).block(TIMEOUT)));
         assertTrue(events.isEmpty());
@@ -140,11 +142,32 @@ class InstalledResourceLifecycleTest {
     }
 
     @Test
+    void shouldPropagateSynchronousInterceptorFailureWithoutPersistence() {
+        RuntimeException error = new IllegalStateException("interceptor failed");
+        var failed = new SaveInterceptor((context, chain) -> {
+            throw error;
+        });
+
+        assertSame(error, assertThrows(RuntimeException.class, () -> save(manager(failed)).block(TIMEOUT)));
+        assertTrue(events.isEmpty());
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void shouldSkipPostProcessingWhenInterceptorFailsAfterDelegating() {
+        RuntimeException error = new IllegalStateException("after delegation failed");
+        var failed = new SaveInterceptor((context, chain) -> chain.proceed(context).then(Mono.error(error)));
+
+        assertSame(error, assertThrows(RuntimeException.class, () -> save(manager(failed)).block(TIMEOUT)));
+        assertEquals(List.of("delete", "save"), events);
+    }
+
+    @Test
     void shouldHandleEmptyProviderResultAndDeleteOnlyPreviousRecords() {
         when(provider.install(any())).thenReturn(Flux.empty());
-        var observer = new SaveInterceptor(context -> {
+        var observer = new SaveInterceptor((context, chain) -> {
             assertTrue(context.getResources().isEmpty());
-            return context.save();
+            return chain.proceed(context);
         });
 
         save(manager(observer)).block(TIMEOUT);
@@ -156,7 +179,7 @@ class InstalledResourceLifecycleTest {
     @Test
     void shouldCreateRecordManagementContextForEveryInstallSubscription() {
         List<CapabilityInstalledResourceSaveContext> contexts = new ArrayList<>();
-        var custom = new SaveInterceptor(context -> Mono.fromRunnable(() -> contexts.add(context)));
+        var custom = new SaveInterceptor((context, chain) -> Mono.fromRunnable(() -> contexts.add(context)));
         Mono<Void> install = save(manager(custom));
 
         install.block(TIMEOUT);
@@ -179,11 +202,13 @@ class InstalledResourceLifecycleTest {
         return manager.savePackage(pkg, progress, new CapabilityInstallRequest(), List.of(previous));
     }
 
-    private record SaveInterceptor(Function<CapabilityInstalledResourceSaveContext, Mono<Void>> save)
+    private record SaveInterceptor(
+        BiFunction<CapabilityInstalledResourceSaveContext, CapabilityInstalledResourceSaveChain, Mono<Void>> save)
         implements CapabilityInstalledResourceInterceptor {
         @Override
-        public Mono<Void> afterInstalled(CapabilityInstalledResourceSaveContext context) {
-            return save.apply(context);
+        public Mono<Void> afterInstalled(CapabilityInstalledResourceSaveContext context,
+                                          CapabilityInstalledResourceSaveChain chain) {
+            return save.apply(context, chain);
         }
 
         @Override
