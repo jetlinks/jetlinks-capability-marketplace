@@ -100,7 +100,8 @@ SDK 不处理数据权限、不预查类型组合，也不扩展动态查询、�
 列表加载保持不分页，安装状态判断、升级和依赖加载保留原有业务范围。
 
 本次优化收敛到明确指定资源类型的查询。资产、租户拦截器通过资产注册信息识别类型及别名，
-对可识别资产直接向 `dataId` 注入关联权限条件；未指定类型、未注册类型或仅能通过 Provider 转换的类型沿用原有结果过滤。
+对可识别资产向 `dataId` 注入关联权限条件，并保留 Provider 映射优先级：映射不同或无法确认的 Provider 仍走原有结果过滤；
+未指定类型、未注册类型沿用原有结果过滤。映射保护及权限条件均由资产、租户组件负责。
 查询入口位于 `marketplace-client/src/main/java/org/jetlinks/marketplace/client/impl/DefaultCapabilityResourceManager.java`，
 查询前扩展位于同模块的 `spi/CapabilityInstalledResourceInterceptor.java`。
 
@@ -113,7 +114,10 @@ Provider 返回安装结果后统一调用 `afterInstalled(context, chain)`。�
 扩展接管记录存储时需保证与其他入口兼容，外部存储的事务一致性由扩展负责。
 
 SDK 的 38 项测试通过，覆盖参数替换、委托顺序、短路、错误传播、订阅隔离及原有安装行为。
-配套验证共 71 项通过，包含资产拦截器 10 项、租户 18 项和原有 SaaS 命令 5 项；未执行真实微服务部署联调。
+本轮编译及重跑资产、租户 36 项测试通过，包含 21 项 H2 SQL 测试；复用未改动的 SDK 38 项及 SaaS 命令 5 项证据，共 79 项通过。
+Provider 将已注册资源类型及别名映射为其他资产类型时，结果与原过滤路径一致；正常类型查询仍在 1,000 条无权记录中仅解码 1 条可见记录。
+旧过滤实现及 lambda 的二进制兼容探针通过。新增 Chain 类型要求配套升级 SDK：先发布 SDK，再升级资产、租户组件；
+新版组件不能与不含 Chain 类型的旧 SDK 混用，也不通过关闭权限拦截器规避版本不匹配。未执行真实微服务部署联调。
 [SDK PR #35](https://github.com/jetlinks/jetlinks-capability-marketplace/pull/35)。
 配套变更：[资产组件 #1661](https://github.com/jetlinks-v2/jetlinks-components/pull/1661)、
 [租户组件 #50](https://github.com/jetlinks-v2/jetlinks-tenant/pull/50)。
