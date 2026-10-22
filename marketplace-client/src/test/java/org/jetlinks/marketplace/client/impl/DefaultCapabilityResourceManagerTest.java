@@ -1,6 +1,5 @@
 package org.jetlinks.marketplace.client.impl;
 
-import org.hswebframework.ezorm.core.param.QueryParam;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveQuery;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveRepository;
 import org.hswebframework.ezorm.rdb.mapping.defaults.SaveResult;
@@ -259,10 +258,6 @@ class DefaultCapabilityResourceManagerTest {
         ArgumentCaptor<Collection<String>> deleteIds = ArgumentCaptor.forClass(Collection.class);
         verify(repository).deleteById(deleteIds.capture());
         assertEquals(List.of("binding-right"), deleteIds.getValue().stream().toList());
-        ArgumentCaptor<QueryParam> queryParam = ArgumentCaptor.forClass(QueryParam.class);
-        verify(loadQuery).setParam(queryParam.capture());
-        assertTrue(queryParam.getValue().getTerms().stream().anyMatch(term ->
-            "dataId".equals(term.getColumn()) && List.of("tenant-right").equals(term.getValue())));
     }
 
     @Test

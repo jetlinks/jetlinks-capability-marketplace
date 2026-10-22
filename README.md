@@ -91,27 +91,30 @@ Controller、Command Handler 和 Client 只负责参数与结果转发，不暴�
 `creatorId`、`createTime`、`modifierId`、`modifyTime`。前端做安装状态判断时，
 直接读取安装记录的 `modifyTime`，不从版本详情字段推断更新时间。
 
-### 已安装资源查询约束
+### 安装记录加载与保存扩展
 
-marketplace-client 只负责安装资源的通用查询与拦截器调度。数据权限由 assets-component、tenant-component 的拦截器实现；
-查询编排不解析资产类型、不声明权限字段、不注入权限条件。运行时命令查询复用同一入口，不调整安装写入与自动绑定行为，也不增加表字段。
+marketplace-client 通过 `CapabilityInstalledResourceInterceptor.loadInstalled(context)` 加载安装记录，
+上下文提供加载范围、查询参数及继续加载的方法；扩展可调整查询后继续，或自行返回安装记录，随后统一执行已有结果过滤。
+SDK 不处理数据权限、不预查类型组合，也不扩展动态查询、字段投影或排序逻辑。
+列表加载保持不分页，安装状态判断、升级和依赖加载保留原有业务范围。
 
-加载顺序为：先将能力、资源类型和指定目标数据 ID 加入查询条件，再调用安装资源拦截器的 `prepareQuery`，最后读取安装记录并保留已有结果过滤。
-SDK 向扩展提供延迟加载、按业务条件去重的 `providerId/type` 组合，同一订阅共享查询结果；没有扩展订阅时不查询类型组合。
-资产类型转换、`dataId` 权限条件组合及权限转换器错误处理均由资产、租户扩展负责。
-
+本次优化收敛到明确指定资源类型的查询。资产、租户拦截器通过资产注册信息识别类型及别名，
+对可识别资产直接向 `dataId` 注入关联权限条件；未指定类型、未注册类型或仅能通过 Provider 转换的类型沿用原有结果过滤。
 查询入口位于 `marketplace-client/src/main/java/org/jetlinks/marketplace/client/impl/DefaultCapabilityResourceManager.java`，
-查询前扩展位于同模块的 `spi/CapabilityInstalledResourceInterceptor.java`。列表加载保持不分页，动态查询保留调用方的排序、分页及业务条件；
-拦截器通过 `getRequiredFields` 声明结果处理需要的字段，SDK 另保留恢复顺序需要的安装记录 ID，过滤后恢复 SQL 顺序，
-返回前恢复调用方请求的字段投影；不修改调用方参数，也不跨订阅缓存查询结果。结果过滤按 200 条顺序处理，避免全量收集。
+查询前扩展位于同模块的 `spi/CapabilityInstalledResourceInterceptor.java`。
 
-验证结果（2026-10-22，JDK 21，Maven 离线联合 reactor）：本模块 30 项测试通过，包含 6 项通用查询扩展契约测试，
-覆盖字段声明、空结果与异常短路、旧过滤 lambda、排序、拦截器顺序及重复订阅；同时覆盖升级目标数据 ID 下推。
-配套组件共计 61 项定向测试通过，相关模块编译通过；实际权限 SQL 回归位于 tenant-component 的
-`InstalledResourceQueryIntegrationTest`。验证范围为本地单元测试与 H2 SQL，未执行真实集群及其他数据库方言验证。
-初始实现提交：`fb970834de515558caa3d94d86e086910fd53a20`；[SDK PR #35](https://github.com/jetlinks/jetlinks-capability-marketplace/pull/35)。
+Provider 返回安装结果后统一调用 `afterInstalled(context)`。上下文携带 Provider、安装包、旧记录和新记录，
+`context.save()` 委托后续扩展，链尾默认替换旧记录并保存新记录；扩展可自行处理并跳过默认存储。
+空结果代表扩展已完成处理，不触发默认回退；调用继续处理的方法时应只调用一次。记录处理完成后沿用已有保存后处理，
+资产绑定仍在此阶段执行；异常向安装事务传播。
+这些钩子覆盖管理器的加载与安装后记录替换，独立查询命令和卸载删除仍沿用已有存储入口。
+扩展接管记录存储时需保证与其他入口兼容，外部存储的事务一致性由扩展负责。
+
+SDK 的 35 项测试通过，覆盖加载和保存的委托、接管、空结果、异常传播、重复订阅及原有安装行为。
+配套验证共 67 项通过，包含资产拦截器 9 项、租户 18 项和原有 SaaS 命令 5 项；未执行真实微服务部署联调。
+[SDK PR #35](https://github.com/jetlinks/jetlinks-capability-marketplace/pull/35)。
 配套变更：[资产组件 #1661](https://github.com/jetlinks-v2/jetlinks-components/pull/1661)、
-[租户组件 #50](https://github.com/jetlinks-v2/jetlinks-tenant/pull/50)、[SaaS #100](https://github.com/jetlinks-v2/jetlinks-saas/pull/100)。
+[租户组件 #50](https://github.com/jetlinks-v2/jetlinks-tenant/pull/50)。
 
 ## 安装资源资产类型转换与绑定
 

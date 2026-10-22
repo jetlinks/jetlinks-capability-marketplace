@@ -1,6 +1,5 @@
 package org.jetlinks.marketplace.client;
 
-import org.hswebframework.web.api.crud.entity.QueryParamEntity;
 import org.jetlinks.marketplace.CapabilityInstallRequest;
 import org.jetlinks.marketplace.InstalledResource;
 import org.jetlinks.marketplace.ProgressState;
@@ -39,15 +38,6 @@ public interface CapabilityResourceManager {
     }
 
     Mono<Boolean> isInstalled(String capabilityId);
-
-    /**
-     * 按查询参数加载安装资源，统一执行查询前拦截和结果过滤。
-     *
-     * @param query 查询条件、排序和分页参数
-     * @return 拦截器处理后的安装资源
-     * @since 2.20
-     */
-    Flux<InstalledResource> queryInstalledResources(QueryParamEntity query);
 
     Flux<InstalledResource> listInstalledResources(String type, Collection<String> dataId);
 

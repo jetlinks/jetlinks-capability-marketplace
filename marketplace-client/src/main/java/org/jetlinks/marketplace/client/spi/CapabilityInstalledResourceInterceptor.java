@@ -1,14 +1,11 @@
 package org.jetlinks.marketplace.client.spi;
 
-import org.hswebframework.web.api.crud.entity.QueryParamEntity;
 import org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.util.Set;
-
 /**
- * 已安装能力资源过滤扩展点.
+ * 已安装能力资源加载、记录管理及过滤扩展点.
  *
  * @author zhouhao
  * @since 2.12
@@ -16,39 +13,30 @@ import java.util.Set;
 public interface CapabilityInstalledResourceInterceptor {
 
     /**
-     * 在读取安装记录前调整查询，原有结果过滤仍会执行。
+     * 加载安装记录，覆盖管理器的列表、状态判断、升级及依赖加载；原有结果过滤仍会统一执行。
      *
-     * @param context 加载范围
-     * @param query 当前订阅独立的查询参数，附加约束应与原始条件取交集
-     * @param resourceTypes 按原始查询条件在数据库去重的 Provider/资源类型组合；
-     *                      实体仅含 providerId 和 type，不包含安装记录 ID 和 dataId。
-     *                      该流延迟加载且在本次订阅内共享，扩展无需类型信息时可不订阅；类型转换由扩展处理
-     * @return 受限查询；空 Mono 表示没有匹配范围，不执行安装记录查询；错误直接传播
+     * @param context 加载范围、查询参数及后续加载委托。追加约束应与原始条件取交集
+     * @return 安装记录；可调用 context.load() 继续，或自行返回记录。空结果不回退默认查询，错误直接传播
      * @since 2.20
      * @see #filter(CapabilityInstalledResourceFilterContext, Flux)
      */
-    default Mono<QueryParamEntity> prepareQuery(CapabilityInstalledResourceFilterContext context,
-                                               QueryParamEntity query,
-                                               Flux<CapabilityResourceInstallEntity> resourceTypes) {
-        return Mono.just(query);
+    default Flux<CapabilityResourceInstallEntity> loadInstalled(CapabilityInstalledResourceLoadContext context) {
+        return context.load();
     }
 
     /**
-     * 声明结果过滤必需的实体属性。管理器构建时读取，需返回稳定的字段集合。
-     * SDK 会在查询中补取这些字段，过滤后恢复调用方的字段投影。
+     * Provider 安装成功后的记录管理，默认委托后续扩展，链尾替换旧记录并保存新记录。
+     * 记录处理成功后才调用保存后处理器；扩展接管存储时须在完成信号前完成自身记录管理。
      *
-     * @return 实体属性名集合，不使用数据库列名；默认没有额外要求
+     * @param context 当前 Provider、安装包、本次覆盖的旧记录、新记录及默认保存委托
+     * @return 记录处理完成信号；空信号表示已处理，不触发默认保存；异常中断安装事务及后置处理
      * @since 2.20
-     * @see #filter(CapabilityInstalledResourceFilterContext, Flux)
+     * @see CapabilityInstalledResourcePostProcessor
      */
-    default Set<String> getRequiredFields() {
-        return Set.of();
+    default Mono<Void> afterInstalled(CapabilityInstalledResourceSaveContext context) {
+        return context.save();
     }
 
-    /**
-     * 过滤查询结果。SDK 每批最多传入 200 条，并按安装记录 ID 恢复输入顺序。
-     * 返回的实体须保留输入 ID，且不应引入输入批次以外的记录。
-     */
     Flux<CapabilityResourceInstallEntity> filter(CapabilityInstalledResourceFilterContext context,
                                                  Flux<CapabilityResourceInstallEntity> resources);
 }
