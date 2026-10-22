@@ -93,27 +93,23 @@ Controller、Command Handler 和 Client 只负责参数与结果转发，不暴�
 
 ### 已安装资源查询约束
 
-已安装资源加载的优化范围仅包含 marketplace-client 查询入口，以及 assets-component、tenant-component 的查询前权限扩展；
-运行时命令查询复用同一入口，不调整安装写入与自动绑定行为，也不增加表字段。
+marketplace-client 只负责安装资源的通用查询与拦截器调度。数据权限由 assets-component、tenant-component 的拦截器实现；
+查询编排不解析资产类型、不声明权限字段、不注入权限条件。运行时命令查询复用同一入口，不调整安装写入与自动绑定行为，也不增加表字段。
 
-加载顺序为：先将能力、资源类型和指定目标数据 ID 加入查询条件，再通过安装资源拦截器注入查询权限，最后读取安装记录并保留已有结果过滤。
-需要解析资产类型时，仅按业务条件查询去重的 `providerId/type` 组合，复用 Provider 的资源类型转换规则；权限约束作用于安装记录的 `dataId`，
-不同 Provider/资源类型的约束分别分组，避免混用资产类型。查询条件使用 AssetsHolder 体系，缺少必要的数据库条件转换器时明确失败。
+加载顺序为：先将能力、资源类型和指定目标数据 ID 加入查询条件，再调用安装资源拦截器的 `prepareQuery`，最后读取安装记录并保留已有结果过滤。
+SDK 向扩展提供延迟加载、按业务条件去重的 `providerId/type` 组合，同一订阅共享查询结果；没有扩展订阅时不查询类型组合。
+资产类型转换、`dataId` 权限条件组合及权限转换器错误处理均由资产、租户扩展负责。
 
 查询入口位于 `marketplace-client/src/main/java/org/jetlinks/marketplace/client/impl/DefaultCapabilityResourceManager.java`，
 查询前扩展位于同模块的 `spi/CapabilityInstalledResourceInterceptor.java`。列表加载保持不分页，动态查询保留调用方的排序、分页及业务条件；
-内部查询保留结果过滤和顺序恢复需要的 `id/providerId/type/dataId`，过滤后按安装记录 ID 恢复 SQL 顺序，
-返回前恢复调用方请求的字段投影；不修改调用方参数，也不跨订阅缓存权限。结果过滤按 200 条顺序处理，避免全量收集。
-资源所属微服务复用实体 `@Asset` 的本地权限转换器注册，不要求额外声明 `AssetType.getTableName()`；
-缺少转换器的测试属于故障注入，验证错误不能退化为未受限读取。
+拦截器通过 `getRequiredFields` 声明结果处理需要的字段，SDK 另保留恢复顺序需要的安装记录 ID，过滤后恢复 SQL 顺序，
+返回前恢复调用方请求的字段投影；不修改调用方参数，也不跨订阅缓存查询结果。结果过滤按 200 条顺序处理，避免全量收集。
 
-验证结果（2026-10-22，JDK 21，Maven 离线联合 reactor）：marketplace-client 24 项、assets-component 6 项、tenant-component 19 项、
-saas-runtime-agent 6 项定向测试全部通过，相关模块编译通过。tenant-component 包含 14 项 `InstalledResourceQueryIntegrationTest` H2 实际 SQL 测试：
-加入 1,000 条其他租户安装记录后仍仅解码 2 条可见记录；覆盖多 Provider 的相同资源类型和重叠数据 ID、空权限范围、查询条件 OR 分组、
-分页、返回字段投影、420 条跨类型与跨批次排序、列表不分页、指定数据 ID、跨租户重复订阅，
-以及故障注入下权限转换器或资产表缺失时失败且不读取实体。
-SDK 测试确认升级目标数据 ID 下推，运行时测试确认原查询参数转发至统一权限入口。验证范围为本地单元测试与 H2 SQL，未执行真实集群及其他数据库方言验证。
-实现提交：`fb970834de515558caa3d94d86e086910fd53a20`；[SDK PR #35](https://github.com/jetlinks/jetlinks-capability-marketplace/pull/35)。
+验证结果（2026-10-22，JDK 21，Maven 离线联合 reactor）：本模块 30 项测试通过，包含 6 项通用查询扩展契约测试，
+覆盖字段声明、空结果与异常短路、旧过滤 lambda、排序、拦截器顺序及重复订阅；同时覆盖升级目标数据 ID 下推。
+配套组件共计 61 项定向测试通过，相关模块编译通过；实际权限 SQL 回归位于 tenant-component 的
+`InstalledResourceQueryIntegrationTest`。验证范围为本地单元测试与 H2 SQL，未执行真实集群及其他数据库方言验证。
+初始实现提交：`fb970834de515558caa3d94d86e086910fd53a20`；[SDK PR #35](https://github.com/jetlinks/jetlinks-capability-marketplace/pull/35)。
 配套变更：[资产组件 #1661](https://github.com/jetlinks-v2/jetlinks-components/pull/1661)、
 [租户组件 #50](https://github.com/jetlinks-v2/jetlinks-tenant/pull/50)、[SaaS #100](https://github.com/jetlinks-v2/jetlinks-saas/pull/100)。
 
