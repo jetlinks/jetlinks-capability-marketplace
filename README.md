@@ -89,15 +89,15 @@ SaaS 公开查询只返回启用资源，并沿用既有认证、可用性判断
 
 ### 资产类型转换与绑定
 
-能力资源的 `type` 表示能力 Provider 暴露的资源类型。安装资源资产类型优先通过 `CapabilityProvider`
-的 `resolveAssetType(String)` 转换；Provider 缺失或返回空 Mono 时，marketplace-client 的安装资源解析工具会回退使用
+能力资源的 `type` 表示能力 Provider 暴露的资源类型。SDK 通过 `CapabilityProvider`
+的 `resolveAssetType(String)` 提供类型转换；Provider 缺失或返回空 Mono 时，marketplace-client 的安装资源解析工具会回退使用
 `CapabilityResourceInstallEntity.type`。
 
-安装记录额外保存 Provider ID，资产权限过滤时据此解析当前 Provider，再调用同一转换方法；不修改公共的
-`InstalledResource`，也不把转换后的资产类型写入安装资源。安装记录保存完成后由 marketplace-client 的安装后扩展点通知
-assets-component，后者使用相同的 Provider 转换结果按资产类型批量绑定当前资产持有人。
-业务侧需要处理 `CapabilityResourceInstallEntity` 时，统一使用 marketplace-client 提供的 `CapabilityProviderUtils`
-解析为 `ResolvedAssetTypeInstalledResource`，统一处理 Provider 转换与资源类型回退。
+安装记录额外保存 Provider ID，不修改公共的 `InstalledResource`，也不把转换后的资产类型写入安装资源。
+资产、租户组件对已注册资产类型及别名直接使用规范资产 ID；未注册类型再使用 `CapabilityProviderUtils`
+按记录中的 Provider 解析为 `ResolvedAssetTypeInstalledResource`。查询权限、结果过滤和安装后绑定采用相同优先级。
+安装记录保存完成后由 marketplace-client 的安装后扩展点通知 assets-component，按最终资产类型批量绑定当前资产持有人。
+SDK 不依赖资产类型注册表，Provider 转换及资源类型回退仍由原有解析工具处理。
 
 集群 Provider 通过 RPC 调用实际 Provider 的类型转换方法，在本地缓存转换结果（包括空结果），Provider 刷新时清空缓存。
 跨服务安装时，`CapabilityContext.loadInstallResources()` 和 `loadDependencyResources()` 使用 `marketplace-core`
@@ -130,8 +130,8 @@ assets-component，后者使用相同的 Provider 转换结果按资产类型批
 ### 数据权限与版本要求
 
 SDK 提供扩展机制，数据权限由资产、租户组件实现。明确指定已注册资产类型或别名时，权限拦截器使用规范资产 ID，
-向安装记录的 `dataId` 注入关联权限条件。Provider 映射到其他资产类型或映射无法确认时，候选记录继续由结果过滤器判断；
-未指定类型或类型未注册时沿用结果过滤。
+向安装记录的 `dataId` 注入关联权限条件；Provider 不覆盖已注册资产类型。未指定类型时按各记录的类型执行结果过滤，
+类型未注册时由结果过滤按实际 Provider 解析。
 
 已有 `filter` 实现和 lambda 可继续使用，新增钩子默认委托后续节点。
 使用加载和记录管理责任链的资产、租户组件需配套升级到包含 Load/Save Chain 类型的 SDK；先发布 SDK，再升级组件。
