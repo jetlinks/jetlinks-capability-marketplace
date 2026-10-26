@@ -1,5 +1,9 @@
 # jetlinks-capability-marketplace
-JetLinks 能力市场SDK
+
+JetLinks 能力市场 SDK，提供能力查询、下载、安装、升级和已安装资源管理。
+
+- [marketplace-core](marketplace-core/)：能力包、资源和版本等公共契约，以及 Client、Provider SPI。
+- [marketplace-client](marketplace-client/)：安装编排、安装记录管理、HTTP/Command 客户端和 Spring 配置。
 
 ## 能力操作上下文与事件上报
 
@@ -50,7 +54,7 @@ Provider 可通过 `CapabilityContext.monitor().recorder()` 记录结构化动�
 ## 能力最新版本详情查询
 
 运行时能力市场只通过 `CapabilityMarketplaceClient` 访问 SaaS 能力市场，不直接依赖 SaaS 管理端的
-`MarketplaceResourceDetail`。公共契约新增 `CapabilityLatestVersionInfo`，在 `CapabilityInfo` 基础上携带最新
+`MarketplaceResourceDetail`。公共契约 `CapabilityLatestVersionInfo` 在 `CapabilityInfo` 基础上携带最新
 `CapabilityVersion` 和资源级 `attachment`；版本信息补充 `publishTime`、`others` 和
 `dependencyDetails`，其中依赖详情仍使用
 `CapabilityLatestVersionInfo` 表达启用的依赖能力，并在其 `versionRange` 范围内选择最高版本。
@@ -61,55 +65,75 @@ Provider 可通过 `CapabilityContext.monitor().recorder()` 记录结构化动�
 SaaS Manager 内部复用资源详情查询和直接依赖装配逻辑，在 `MarketplacePublicService` 统一转换为公共契约；
 Controller、Command Handler 和 Client 只负责参数与结果转发，不暴露 SaaS 内部实体和 DTO。
 
-本次只展开当前版本的直接依赖，依赖项自身的 `dependencyDetails` 不递归填充；发布时间原样返回版本
+查询只展开当前版本的直接依赖，依赖项自身的 `dependencyDetails` 不递归填充；发布时间原样返回版本
 `publishTime` 与 `others.contentPublishedAt`，由调用方按 `publishTime` 优先、`contentPublishedAt` 兜底的规则
 判断同版本内容是否更新。不改变现有能力安装时的 `versionRange` 解析和依赖安装行为。
 
-测试覆盖：
+没有最新版本时 `version` 为 `null`；没有依赖时 `dependencyDetails` 为空集合。
+SaaS 公开查询只返回启用资源，并沿用既有认证、可用性判断和数据脱敏逻辑。
 
-- 公共查询返回能力基本信息、最新版本、发布时间、`others`，以及启用的直接依赖在版本范围内的最高版本。
-- 没有最新版本时 `version` 为 `null`；没有依赖时 `dependencyDetails` 为空集合，不产生递归查询或阻塞调用。
-- HTTP Client、Command Client、内部 Client 与运行时 Controller 使用同一 `CapabilityLatestVersionInfo` 契约。
-- SaaS 公开查询继续只返回启用资源，并沿用既有认证、可用性判断和数据脱敏逻辑。
+## 已安装资源管理
 
-跨服务 Provider 安装时，`CapabilityContext.loadInstallResources()` 和
-`CapabilityContext.loadDependencyResources()` 只以 `marketplace-core` 中的
-`InstalledResource` 作为资源契约。安装编排侧会在进入 Provider 前把本地持久化实体转换为
-`InstalledResource`，集群命令回调侧也会在返回 RPC 前复制为基础 `InstalledResource`，避免远端服务加载
-`marketplace-client` 内部实体类。
-
-## 已安装资源绑定主键
+### 绑定主键
 
 `capability_resource_install` 的主键使用 `capabilityId + type + resourceId + dataId` 生成稳定摘要，
 用于表达一条逻辑安装绑定，而不是一次安装流水。相同能力资源重新安装、升级或补写版本时应复用同一主键，
 避免同一逻辑绑定因重复保存落成多条记录；版本号仍单独存储，不参与绑定主键生成。
 
-## 已安装资源详情
+### 资源详情
 
 `CapabilityResourceInstallEntity#toResource()` 返回 `InstalledResourceDetail`，
 在基础 `InstalledResource` 字段之外额外暴露 `providerId` 以及审计字段
 `creatorId`、`createTime`、`modifierId`、`modifyTime`。前端做安装状态判断时，
 直接读取安装记录的 `modifyTime`，不从版本详情字段推断更新时间。
 
-## 安装资源资产类型转换与绑定
+### 资产类型转换与绑定
 
-能力资源的 `type` 表示能力 Provider 暴露的资源类型。安装资源资产类型优先通过 `CapabilityProvider`
-的 `resolveAssetType(String)` 转换；Provider 缺失或返回空 Mono 时，marketplace-client 的安装资源解析工具会回退使用
+能力资源的 `type` 表示能力 Provider 暴露的资源类型。SDK 通过 `CapabilityProvider`
+的 `resolveAssetType(String)` 提供类型转换；Provider 缺失或返回空 Mono 时，marketplace-client 的安装资源解析工具会回退使用
 `CapabilityResourceInstallEntity.type`。
 
-安装记录额外保存 Provider ID，资产权限过滤时据此解析当前 Provider，再调用同一转换方法；不修改公共的
-`InstalledResource`，也不把转换后的资产类型写入安装资源。安装记录保存完成后由 marketplace-client 的安装后扩展点通知
-assets-component，后者使用相同的 Provider 转换结果按资产类型批量绑定当前资产持有人。
-业务侧需要处理 `CapabilityResourceInstallEntity` 时，统一使用 marketplace-client 提供的 `CapabilityProviderUtils`
-解析为 `ResolvedAssetTypeInstalledResource`，统一处理 Provider 转换与资源类型回退。
+安装记录额外保存 Provider ID，不修改公共的 `InstalledResource`，也不把转换后的资产类型写入安装资源。
+资产、租户组件统一解析时先使用已注册资产类型及别名的规范 ID；未注册类型直接调用 `CapabilityProviders.resolveAssetType`
+按实际 Provider 转换。查询前没有具体 Provider 时保留后置解析，结果过滤与安装后绑定使用相同优先级。
+安装记录保存完成后由 marketplace-client 的安装后扩展点通知 assets-component，按最终资产类型批量绑定当前资产持有人。
+SDK 不依赖资产类型注册表，Provider 转换及资源类型回退仍由原有解析工具处理。
 
-本次实施范围：
+集群 Provider 通过 RPC 调用实际 Provider 的类型转换方法，在本地缓存转换结果（包括空结果），Provider 刷新时清空缓存。
+跨服务安装时，`CapabilityContext.loadInstallResources()` 和 `loadDependencyResources()` 使用 `marketplace-core`
+中的 `InstalledResource` 作为公共资源契约；安装编排和集群命令回调均将本地实体转换为该契约后再传递。
 
-- marketplace-core：增加资源类型到资产类型的响应式转换 SPI，默认按资源类型作为资产类型返回。
-- marketplace-client：保存 Provider ID，增加安装后处理 SPI 和安装资源资产类型解析工具，在 `savePackage` 保存安装记录后调用。
-- assets-component：按 Provider 转换结果过滤已安装资源，并自动绑定有资产类型和数据 ID 的资源。
-- 集群 Provider：通过 RPC 远程调用实际 Provider 的转换方法，并在 Cluster Provider 本地使用 Map 缓存正、负结果；Provider 刷新时清空。
+### 安装记录扩展
 
-测试目标：覆盖资产类型转换、Provider 返回空 Mono 时回退资源类型、Provider 缺失时回退资源类型、批量自动绑定、安装记录保存失败时不执行后处理，
-以及集群 Provider 远程转换和缓存刷新行为。当前按仓库协作约束不自动新增或修改测试；涉及仓库的 `git diff --check` 已通过，Java
-编译和测试未自动执行，请开发者切换 Java 21 后自行验证。
+[CapabilityInstalledResourceInterceptor](marketplace-client/src/main/java/org/jetlinks/marketplace/client/spi/CapabilityInstalledResourceInterceptor.java)
+提供加载、记录管理和结果过滤三个扩展点，由 Spring 注册的拦截器参与处理：
+
+| 扩展点 | 上下文与默认行为 |
+| --- | --- |
+| `loadInstalled(context, chain)` | 上下文包含业务加载范围和查询参数；链尾按参数查询安装记录。 |
+| `afterInstalled(context, chain)` | 上下文包含 Provider、安装包、本次覆盖的旧记录及新记录；链尾替换旧记录并保存新记录。 |
+| `filter(context, resources)` | 按原始业务加载范围过滤记录；默认查询和自定义来源都经过所有结果过滤器。 |
+
+加载节点调用 `chain.proceed(context)` 继续后续节点，使用 `chain.proceed(context.withQuery(query))` 传递替换后的查询参数；
+追加条件应与原业务范围取交集。节点也可直接返回安装记录，接管本次加载。列表加载不分页，该扩展同时用于状态判断、升级和依赖加载。
+
+记录管理节点调用 `chain.proceed(context)` 继续后续节点，或自行完成旧记录替换和新记录保存。
+整条记录管理链成功完成后才调用 `CapabilityInstalledResourcePostProcessor`，资产绑定在此阶段执行；异常中断安装事务和后处理。
+
+上下文按订阅独立创建。Spring 装配按 `@Order` 排序，手动构造管理器时按传入列表顺序执行。
+每个节点每次处理至多调用一次 `chain.proceed`，不自行订阅或重试。直接返回空流或空完成信号表示节点已接管处理，
+不会触发默认查询或保存。自定义加载仍需经过链外的结果过滤，自定义记录管理仍需在成功后执行链外的保存后处理。
+
+扩展范围为管理器的加载和安装后记录管理，独立查询命令、卸载删除使用各自的存储入口。
+自定义存储需保证这些入口兼容，并负责外部存储的事务一致性。
+
+### 数据权限与版本要求
+
+SDK 提供扩展机制，查询注入与结果过滤由资产组件通过统一 `AssetsHolder` 实现，租户权限沿用 Holder 装配规则，租户组件不注册市场专用过滤器。
+仅租户 Header 或上下文不会额外启用数据权限，是否限制租户范围由统一权限配置及活动 tenant Scope 决定。
+明确指定已注册资产类型或别名时，资产拦截器使用规范资产 ID，
+向安装记录的 `dataId` 注入关联权限条件；Provider 不覆盖已注册资产类型。未指定类型时按各记录的类型执行结果过滤，
+类型未注册时由结果过滤按实际 Provider 解析。
+
+已有 `filter` 实现和 lambda 可继续使用，新增钩子默认委托后续节点。
+使用加载和记录管理责任链的组件需配套升级到包含 Load/Save Chain 类型的 SDK；先发布 SDK，再升级组件。

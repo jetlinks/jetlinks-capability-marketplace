@@ -3,6 +3,7 @@ package org.jetlinks.marketplace.client.impl;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveRepository;
+import org.hswebframework.web.api.crud.entity.QueryParamEntity;
 import org.hswebframework.web.bean.FastBeanCopier;
 import org.hswebframework.web.exception.NotFoundException;
 import org.hswebframework.web.exception.ValidationException;
@@ -21,7 +22,9 @@ import org.jetlinks.marketplace.client.CapabilityResourceManager;
 import org.jetlinks.marketplace.client.entity.CapabilityResourceInstallEntity;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceFilterContext;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceInterceptor;
+import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceLoadContext;
 import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourcePostProcessor;
+import org.jetlinks.marketplace.client.spi.CapabilityInstalledResourceSaveContext;
 import org.jetlinks.marketplace.spi.CapabilityMarketplaceClient;
 import org.jetlinks.marketplace.spi.CapabilityProvider;
 import org.jetlinks.marketplace.spi.CapabilityProviders;
@@ -125,25 +128,28 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
                         Reactors.emitFailureHandler()))
                 .collectList()
                 .flatMap(resources -> {
-
-                    // 删除当前升级目标范围内的旧绑定信息.
-                    Mono<Void> task = deleteInstalledResources(installedResources);
-
-                    // 创建绑定信息
-                    if (CollectionUtils.isNotEmpty(resources)) {
-                        List<CapabilityResourceInstallEntity> entities = resources
-                            .stream()
-                            .map(resource -> CapabilityResourceInstallEntity.from(resource, pkg))
-                            .toList();
-                        task = task.then(
-                            resourceRepository
-                                .save(entities)
-                                .then(processInstalledResources(provider, entities))
-                        );
-                    }
-
-                    return task.then();
+                    List<CapabilityResourceInstallEntity> entities = resources.stream()
+                        .map(resource -> CapabilityResourceInstallEntity.from(resource, pkg))
+                        .toList();
+                    return afterInstalled(new CapabilityInstalledResourceSaveContext(provider, pkg,
+                        CollectionUtils.isEmpty(installedResources) ? List.of() : List.copyOf(installedResources), entities), 0)
+                        // 无论默认保存还是扩展存储，记录管理完成后才执行资产绑定等后置副作用。
+                        .then(entities.isEmpty() ? Mono.empty() : Mono.defer(() -> processInstalledResources(provider, entities)));
                 })));
+    }
+
+    private Mono<Void> afterInstalled(CapabilityInstalledResourceSaveContext context,
+                                      int index) {
+        return Mono.defer(() -> {
+            if (index == installedResourceInterceptors.size()) {
+                return deleteInstalledResources(context.getPreviousResources())
+                    .then(Mono.defer(() -> context.getResources().isEmpty()
+                        ? Mono.empty()
+                        : resourceRepository.save(context.getResources()).then()));
+            }
+            return installedResourceInterceptors.get(index)
+                .afterInstalled(context, current -> afterInstalled(current, index + 1));
+        });
     }
 
     private Mono<Void> processInstalledResources(CapabilityProvider provider,
@@ -193,22 +199,39 @@ public class DefaultCapabilityResourceManager implements CapabilityResourceManag
     }
 
     private Flux<CapabilityResourceInstallEntity> loadInstalledResourceEntities(CapabilityInstalledResourceFilterContext context) {
-        var query = resourceRepository.createQuery();
+        return Flux.defer(() -> {
+            QueryParamEntity param = QueryParamEntity.of().noPaging();
+            var query = param.toNestQuery();
 
-        if (StringUtils.hasText(context.capabilityId())) {
-            query.is(CapabilityResourceInstallEntity::getCapabilityId, context.capabilityId());
-        }
-        if (StringUtils.hasText(context.type())) {
-            query.is(CapabilityResourceInstallEntity::getType, context.type());
-        }
-        if (CollectionUtils.isNotEmpty(context.dataIds())) {
-            query.in(CapabilityResourceInstallEntity::getDataId, context.dataIds());
-        }
-        if (CollectionUtils.isNotEmpty(context.resourceIds())) {
-            query.in(CapabilityResourceInstallEntity::getResourceId, context.resourceIds());
-        }
+            if (StringUtils.hasText(context.capabilityId())) {
+                query.is(CapabilityResourceInstallEntity::getCapabilityId, context.capabilityId());
+            }
+            if (StringUtils.hasText(context.type())) {
+                query.is(CapabilityResourceInstallEntity::getType, context.type());
+            }
+            if (CollectionUtils.isNotEmpty(context.dataIds())) {
+                query.in(CapabilityResourceInstallEntity::getDataId, context.dataIds());
+            }
+            if (CollectionUtils.isNotEmpty(context.resourceIds())) {
+                query.in(CapabilityResourceInstallEntity::getResourceId, context.resourceIds());
+            }
 
-        return filterInstalledResources(context, query.fetch());
+            CapabilityInstalledResourceLoadContext loadContext = new CapabilityInstalledResourceLoadContext(context, param);
+            return filterInstalledResources(context, loadInstalled(loadContext, 0));
+        });
+    }
+
+    private Flux<CapabilityResourceInstallEntity> loadInstalled(CapabilityInstalledResourceLoadContext context,
+                                                               int index) {
+        return Flux.defer(() -> {
+            if (index == installedResourceInterceptors.size()) {
+                var installedQuery = resourceRepository.createQuery();
+                installedQuery.setParam(context.getQuery());
+                return installedQuery.fetch();
+            }
+            return installedResourceInterceptors.get(index)
+                .loadInstalled(context, current -> loadInstalled(current, index + 1));
+        });
     }
 
     private Flux<CapabilityResourceInstallEntity> filterInstalledResources(CapabilityInstalledResourceFilterContext context,
