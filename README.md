@@ -113,3 +113,9 @@ assets-component，后者使用相同的 Provider 转换结果按资产类型批
 测试目标：覆盖资产类型转换、Provider 返回空 Mono 时回退资源类型、Provider 缺失时回退资源类型、批量自动绑定、安装记录保存失败时不执行后处理，
 以及集群 Provider 远程转换和缓存刷新行为。当前按仓库协作约束不自动新增或修改测试；涉及仓库的 `git diff --check` 已通过，Java
 编译和测试未自动执行，请开发者切换 Java 21 后自行验证。
+
+## 国际化资源目录
+
+`marketplace-client` 的中英文消息统一维护在 `marketplace-client/src/main/resources/i18n/marketplace-sdk/`，沿用 2026 年 4 月 8 日已存在的目录，后加入 `i18n/marketplace-client/` 的消息归并到同语言文件。消息键和翻译内容保持原样。重新编译前需移除构建输出中的旧 `i18n/marketplace-client/`，再重新打包相关依赖。
+
+验证：`marketplace-client` 的 Maven 离线 `compile -DskipTests` 及中英文资源加载检查通过，原资源文件逐条合并且无重复键，已清理旧目录的构建资源。未重启完整服务验证启动日志。
